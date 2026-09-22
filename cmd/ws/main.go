@@ -19,11 +19,21 @@ func die(msg string, args ...any) {
 
 func main() {
 	if len(os.Args) < 2 {
-		usage()
+		printHelp("")
 		os.Exit(1)
 	}
 	cmd := os.Args[1]
 	args := os.Args[1:]
+
+	// Global flags
+	if cmd == "--help" || cmd == "-h" {
+		printHelp("")
+		return
+	}
+	if cmd == "--version" || cmd == "-v" {
+		printVersion()
+		return
+	}
 
 	home, _ := os.UserHomeDir()
 	root := filepath.Join(home, ".ws")
@@ -51,8 +61,14 @@ func main() {
 		cmdGraph(args, be, store, logger)
 	case "layer":
 		cmdLayer(args, be, store, logger)
+	case "help":
+		if len(os.Args) > 2 {
+			printHelp(os.Args[2])
+		} else {
+			printHelp("")
+		}
 	default:
-		usage()
+		printHelp("")
 		os.Exit(1)
 	}
 }
@@ -62,23 +78,20 @@ type consoleLogger struct{}
 func (c *consoleLogger) Log(format string, args ...any)   { fmt.Printf(format+"\n", args...) }
 func (c *consoleLogger) Error(format string, args ...any) { fmt.Fprintf(os.Stderr, format+"\n", args...) }
 
-func usage() {
-	fmt.Println(`ws — workspace graph CLI
-
-Usage:
-  ws get <source> --name=<ws-name>
-       source: layer:HASH | ws:NAME | base:REPO#REF
-  ws run <ws-name> -- <command...>
-  ws diff <ws-name> [ws-name-B | layer:HASH]
-  ws keep <ws-name> [--message=<msg>]
-  ws drop <ws-name>
-  ws graph [ws-name]
-  ws layer <ls|show <hash>|gc>`)
+// containsHelp returns true if any arg contains "help" or "--help".
+func containsHelp(args []string) bool {
+	for _, a := range args {
+		if a == "--help" || a == "-h" || a == "help" {
+			return true
+		}
+	}
+	return false
 }
 
 func cmdGet(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
-	if len(args) < 2 {
-		die("usage: ws get <source> --name=<ws-name>")
+	if len(args) < 2 || containsHelp(args) {
+		printHelp("get")
+		os.Exit(1)
 	}
 	source := args[1]
 	var name string
@@ -170,8 +183,9 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 }
 
 func cmdRun(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
-	if len(args) < 4 || args[2] != "--" {
-		die("usage: ws run <ws-name> -- <command...>")
+	if len(args) < 4 || containsHelp(args) || args[2] != "--" {
+			printHelp("run")
+		os.Exit(1)
 	}
 	name := args[1]
 	workspaces := store.ReadWorkspaces()
@@ -198,8 +212,9 @@ func cmdRun(args []string, be backend.Backender, store *storage.Store, log backe
 }
 
 func cmdDiff(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
-	if len(args) < 2 {
-		die("usage: ws diff <ws-name> [ws-name-B | layer:HASH]")
+	if len(args) < 2 || containsHelp(args) {
+			printHelp("diff")
+		os.Exit(1)
 	}
 	nameA := args[1]
 	workspaces := store.ReadWorkspaces()
@@ -233,8 +248,9 @@ func cmdDiff(args []string, be backend.Backender, store *storage.Store, log back
 }
 
 func cmdKeep(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
-	if len(args) < 2 {
-		die("usage: ws keep <ws-name> [--message=<msg>]")
+	if len(args) < 2 || containsHelp(args) {
+			printHelp("keep")
+		os.Exit(1)
 	}
 	name := args[1]
 	var msg string
@@ -281,8 +297,9 @@ func cmdKeep(args []string, be backend.Backender, store *storage.Store, log back
 }
 
 func cmdDrop(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
-	if len(args) < 2 {
-		die("usage: ws drop <ws-name>")
+	if len(args) < 2 || containsHelp(args) {
+			printHelp("drop")
+		os.Exit(1)
 	}
 	name := args[1]
 	workspaces := store.ReadWorkspaces()
@@ -298,6 +315,10 @@ func cmdDrop(args []string, be backend.Backender, store *storage.Store, log back
 }
 
 func cmdGraph(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
+	if len(args) > 1 && containsHelp(args) {
+		printHelp("graph")
+		return
+	}
 	layers := store.ReadLayers()
 	workspaces := store.ReadWorkspaces()
 
@@ -341,8 +362,9 @@ func cmdGraph(args []string, be backend.Backender, store *storage.Store, log bac
 }
 
 func cmdLayer(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
-	if len(args) < 2 {
-		die("usage: ws layer <ls|show <hash>|gc>")
+	if len(args) < 2 || containsHelp(args) {
+			printHelp("layer")
+		os.Exit(1)
 	}
 	sub := args[1]
 	switch sub {
