@@ -17,14 +17,13 @@ import (
 //
 // Architecture:
 //   - Each workspace = one persistent 'container machine'.
-//   - The machine auto-mounts the host home directory, so ~/.ws is visible inside.
+//   - The machine auto-mounts the host home directory (default: rw), so ~/.ws
+//     is visible inside the VM at /Users/<user>/.ws.
 //   - On Fork the layer is copied into the machine's workspace area, then
 //     an overlayfs mount is attempted (layer=lower, machine-local upper).
 //   - If overlayfs mount fails the backend falls back to a plain directory copy.
 //
-// EXPERIMENTAL: Verified against 'container' CLI documentation only. Live
-// behaviour on macOS may differ. Failed attempts report the exact command
-// and stderr so issues can be filed with precise reproduction.
+// CLI reference: https://github.com/apple/container/blob/main/docs/command-reference.md
 type ContainerBackend struct {
 	root string
 	user string // host username, needed for paths inside the VM
@@ -53,10 +52,10 @@ func (b *ContainerBackend) Init(root string) error {
 	return nil
 }
 
-func (b *ContainerBackend) layersDir() string      { return filepath.Join(b.root, "layers") }
-func (b *ContainerBackend) workspacesDir() string   { return filepath.Join(b.root, "workspaces") }
-func (b *ContainerBackend) uppersDir() string       { return filepath.Join(b.root, "uppers") }
-func (b *ContainerBackend) workdirsDir() string     { return filepath.Join(b.root, "workdirs") }
+func (b *ContainerBackend) layersDir() string    { return filepath.Join(b.root, "layers") }
+func (b *ContainerBackend) workspacesDir() string { return filepath.Join(b.root, "workspaces") }
+func (b *ContainerBackend) uppersDir() string     { return filepath.Join(b.root, "uppers") }
+func (b *ContainerBackend) workdirsDir() string   { return filepath.Join(b.root, "workdirs") }
 
 func (b *ContainerBackend) machineName(ws string) string { return "ws-" + sanitizeContainerName(ws) }
 
@@ -64,6 +63,15 @@ func (b *ContainerBackend) machineName(ws string) string { return "ws-" + saniti
 // container machine (virtiofs home mount).
 func (b *ContainerBackend) hostPath(p string) string {
 	return filepath.Join("/Users", b.user, strings.TrimPrefix(p, os.Getenv("HOME")))
+}
+
+// machineDelete removes a container machine by name.
+// Uses 'container machine delete' (the real API) — NOT 'rm -f'.
+// Stops the machine first if it's running.
+func (b *ContainerBackend) machineDelete(mName string) {
+	exec.Command("container", "machine", "stop", mName).Run()
+	time.Sleep(500 * time.Millisecond)
+	exec.Command("container", "machine", "delete", mName).Run()
 }
 
 // Fork creates a new workspace by instantiating a container machine and
@@ -82,26 +90,24 @@ func (b *ContainerBackend) Fork(srcHash string, dstName string, logger Operation
 
 	mName := b.machineName(dstName)
 
-	// Remove any previous machine with this name.
-	// 'container machine rm -f' often needs a moment for background cleanup.
-	exec.Command("container", "machine", "rm", "-f", mName).Run()
-	time.Sleep(2 * time.Second)
+	// Clean up any previous machine with this name.
+	b.machineDelete(mName)
+	time.Sleep(1 * time.Second)
 
 	// Create the machine from a lightweight image.
-	// The image must have 'mount' and a real kernel (any Linux image works).
+	// alpine:latest has tar, mount, and a real Linux kernel.
 	logger.Log("creating container machine %s...", mName)
 	cmd := exec.Command("container", "machine", "create", "alpine:latest", "--name", mName)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		// Stale machine from interrupted prior run: try cleanup + retry once.
 		if strings.Contains(string(out), "already exists") {
 			logger.Log("machine %s still exists, retrying cleanup...", mName)
-			exec.Command("container", "machine", "rm", "-f", mName).Run()
-			time.Sleep(3 * time.Second)
+			b.machineDelete(mName)
+			time.Sleep(2 * time.Second)
 			cmd = exec.Command("container", "machine", "create", "alpine:latest", "--name", mName)
 			out, err = cmd.CombinedOutput()
 			if err != nil {
-				return fmt.Errorf("container machine create (retry): %w\nstderr: %s\n\nTo manually clean up: container machine rm -f %s", err, out, mName)
+				return fmt.Errorf("container machine create (retry): %w\nstderr: %s\n\nTo manually clean up: container machine delete %s", err, out, mName)
 			}
 		} else {
 			return fmt.Errorf("container machine create: %w\nstderr: %s", err, out)
@@ -119,17 +125,16 @@ func (b *ContainerBackend) Fork(srcHash string, dstName string, logger Operation
 	logger.Log("copying layer into workspace %s...", dstName)
 	setup := fmt.Sprintf("tar -C %s -cf - . | tar -C %s -xf -", layerInVM, wsInVM)
 	if err := b.machineRun(mName, "sh", "-c", setup); err != nil {
-		exec.Command("container", "machine", "rm", "-f", mName).Run()
+		b.machineDelete(mName)
 		return fmt.Errorf("initial copy into workspace: %w", err)
 	}
 
 	// Stage 2: attempt overlayfs mount.
-	// This requires root inside the VM. container machines run as the
-	// matching host user by default, so we try 'sudo mount' first.
+	// This requires root inside the VM. Use --root flag on machine run.
 	logger.Log("attempting overlayfs mount in %s...", mName)
-	mountCmd := fmt.Sprintf("mkdir -p %s %s && sudo mount -t overlay overlay -o lowerdir=%s,upperdir=%s,workdir=%s %s",
+	mountCmd := fmt.Sprintf("mkdir -p %s %s && mount -t overlay overlay -o lowerdir=%s,upperdir=%s,workdir=%s %s",
 		upperInVM, workInVM, layerInVM, upperInVM, workInVM, wsInVM)
-	if err := b.machineRun(mName, "sh", "-c", mountCmd); err != nil {
+	if err := b.machineRunRoot(mName, "sh", "-c", mountCmd); err != nil {
 		logger.Log("overlay mount failed: %v (falling back to plain copy)", err)
 		// Fallback: workspace is already the copied directory from Stage 1.
 		return nil
@@ -167,7 +172,7 @@ func (b *ContainerBackend) Mount(string, string, OperationLogger) error { return
 // Unmount destroys the container machine.
 func (b *ContainerBackend) Unmount(name string, _ OperationLogger) error {
 	mName := b.machineName(name)
-	exec.Command("container", "machine", "rm", "-f", mName).Run()
+	b.machineDelete(mName)
 	return nil
 }
 
@@ -187,8 +192,7 @@ func (b *ContainerBackend) Commit(name string, logger OperationLogger) (string, 
 	wsInVM := b.hostPath(filepath.Join(b.workspacesDir(), name))
 
 	// We compute the hash by copying the workspace out to a temp dir on the
-	// host and using the standard hashing.  In future this could be done
-	// entirely inside the VM with a shell script.
+	// host and using the standard hashing.
 	tmpDir, err := os.MkdirTemp("", "ws-commit-*")
 	if err != nil {
 		return "", fmt.Errorf("temp dir: %w", err)
@@ -236,9 +240,20 @@ func (b *ContainerBackend) Diff(wsA string, wsB string, layerB string, w io.Writ
 	return nil
 }
 
-// machineRun is a helper that runs a command inside a container machine.
+// machineRun runs a command inside a container machine as the host user.
 func (b *ContainerBackend) machineRun(name string, args ...string) error {
 	cmdArgs := append([]string{"machine", "run", "-n", name}, args...)
+	cmd := exec.Command("container", cmdArgs...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// machineRunRoot runs a command inside a container machine as root.
+// Uses --root flag (documented in container machine run --help).
+func (b *ContainerBackend) machineRunRoot(name string, args ...string) error {
+	cmdArgs := append([]string{"machine", "run", "-n", name, "--root"}, args...)
 	cmd := exec.Command("container", cmdArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
