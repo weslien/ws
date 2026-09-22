@@ -45,51 +45,40 @@ ws:feature-b [active]
 
 ## Install
 
-### macOS (Apple Silicon)
-
-Requires Go 1.23+.
+### Linux / macOS
 
 ```bash
+curl -sSL https://raw.githubusercontent.com/weslien/ws/main/install.sh | bash
+```
+
+Requires Go 1.23+ installed. If `go` is in your PATH the script will use `go install github.com/weslien/ws/cmd/ws@latest`. Otherwise it falls back to cloning and building from source.
+
+The script installs to `/usr/local/bin` if writable, otherwise `~/.local/bin`. Make sure whichever you choose is in your `PATH`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"  # if installed to ~/.local/bin
+```
+
+#### Optional: manual install
+
+```bash
+# Clone and build locally
 git clone https://github.com/weslien/ws.git
 cd ws
 go build -o ws ./cmd/ws
-sudo mv ws /usr/local/bin/  # optional
+sudo mv ws /usr/local/bin/
 ```
 
-By default, `ws` on macOS uses a **copy backend** — `overlayfs` is unavailable at the macOS kernel level. The copy backend is O(n) per fork but correct and dependency-free.
+### Windows
 
-#### Optional: real overlayfs via `container` ⚡ EXPERIMENTAL
+Prebuilt binaries are provided for Windows amd64 and arm64 in each [GitHub Release](https://github.com/weslien/ws/releases). Download the `.tar.gz` for your architecture, extract, and add the directory to your `PATH`.
 
-If you have Apple's [`container`](https://github.com/apple/container) installed (macOS 26+, Apple Silicon), `ws` automatically uses it to get real Linux VMs with native overlayfs:
+Building from source also works:
 
-```bash
-# Install container first: https://github.com/apple/container#initial-install
-container system start
-
-# Now ws auto-detects 'container' and routes commands through Linux VMs
-ws get base:https://github.com/you/project --name=feature-a
-ws run feature-a -- ls -la             # executes inside the VM
-ws diff feature-a                     # diff against the VM's overlay lower
-```
-
-This gives you fast, copy-on-write workspace forks on macOS. If `container` is not installed, `ws` falls back silently to the copy backend.
-
-### Linux (x86_64, ARM64)
-
-Requires Go 1.23+ and `fuse-overlayfs` (for unprivileged overlay mounts).
-
-```bash
-# Debian / Ubuntu
-sudo apt install fuse-overlayfs  # or: sudo apt install fuse3
-
-# Fedora / RHEL
-sudo dnf install fuse-overlayfs
-
-# Build
+```powershell
 git clone https://github.com/weslien/ws.git
 cd ws
-go build -o ws ./cmd/ws
-sudo mv ws /usr/local/bin/  # optional
+go build -o ws.exe ./cmd/ws
 ```
 
 ### Verify
@@ -304,7 +293,7 @@ Layers are content-addressed by a SHA-256 truncated to 16 hex characters.
 ### macOS
 
 - By default, uses directory copies for all fork/branch operations (no kernel overlayfs available).
-- If Apple's [`container`](https://github.com/apple/container) is installed, automatically routes through lightweight Linux VMs with native overlayfs. See [Install → macOS](#macos-apple-silicon).
+- If Apple's [`container`](https://github.com/apple/container) is installed, automatically routes through lightweight Linux VMs with native overlayfs.
 - No additional dependencies beyond Go (copy backend).
 
 ### Windows
