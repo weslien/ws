@@ -373,7 +373,7 @@ func printHelp(topic string) {
 }
 
 func printVersion() {
-	fmt.Println("ws 0.1.4")
+	fmt.Println("ws 0.1.8")
 }
 
 const usageText = `ws — workspace graph CLI
@@ -392,6 +392,7 @@ COMMANDS
   drop   <ws>                    Destroy workspace (changes lost unless kept)
   graph  [ws]                    Print layer/workspace dependency graph
   layer   <ls|show|gc>           Manage the immutable layer store
+  skill                           Install the ws-workspace-graph agent skill
   update                          Update ws to the latest release
   help    [topic]                 Print help for a command or topic
 
@@ -404,6 +405,9 @@ QUICK START
 HELP TOPICS
   ws help get        Detailed help for 'get'
   ws help run        Detailed help for 'run'
+  ws help layer      Detailed help for 'layer'
+  ws help update     Detailed help for 'update'
+  ws help skill      Detailed help for 'skill'
   ws help agent      Agent workflows and best practices
   ws help concepts   Key concepts and terminology
 
