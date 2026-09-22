@@ -40,18 +40,20 @@ resolve_version() {
     echo "$VERSION"
     return
   fi
-  # fetch latest release tag from GitHub API
   local latest
   if command_exists curl; then
-    # Prefer latest semver release
-    latest=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep -oP '"tag_name":\s*"\K[^"]+' || true)
-    # Fall back to continuous prerelease
+    # 1) Tags API — newest tag first, most reliable for semver ordering
+    latest=$(curl -sL "https://api.github.com/repos/${REPO}/tags" 2>/dev/null | sed -n 's/.*"name": *"\([^"]*\)".*/\1/p' | head -n1)
+    # 2) Fall back to releases/latest (GitHub ordering, not semver)
     if [ -z "${latest:-}" ]; then
-      latest=$(curl -sL "https://api.github.com/repos/${REPO}/releases/tags/continuous" 2>/dev/null | grep -oP '"tag_name":\s*"\K[^"]+' || true)
+      latest=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1)
+    fi
+    # 3) Fall back to continuous prerelease
+    if [ -z "${latest:-}" ]; then
+      latest=$(curl -sL "https://api.github.com/repos/${REPO}/releases/tags/continuous" 2>/dev/null | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1)
     fi
   fi
   if [ -z "${latest:-}" ]; then
-    # No releases at all — can't determine version
     echo ""
     return 1
   fi
