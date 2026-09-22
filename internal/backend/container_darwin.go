@@ -102,8 +102,9 @@ func (b *ContainerBackend) Fork(srcHash string, dstName string, logger Operation
 	// Stage 1: copy the layer into the workspace area inside the VM.
 	// We do this first so we have a fallback if overlay mount fails.
 	logger.Log("copying layer into workspace %s...", dstName)
-	setup := fmt.Sprintf("cp -R %s/. %s", layerInVM, wsInVM)
+	setup := fmt.Sprintf("tar -C %s -cf - . | tar -C %s -xf -", layerInVM, wsInVM)
 	if err := b.machineRun(mName, "sh", "-c", setup); err != nil {
+		exec.Command("container", "machine", "rm", "-f", mName).Run()
 		return fmt.Errorf("initial copy into workspace: %w", err)
 	}
 
@@ -180,7 +181,7 @@ func (b *ContainerBackend) Commit(name string, logger OperationLogger) (string, 
 	defer os.RemoveAll(tmpDir)
 
 	logger.Log("exporting workspace %s from machine %s...", name, mName)
-	if err := b.machineRun(mName, "sh", "-c", fmt.Sprintf("cp -R %s/. %s", wsInVM, b.hostPath(tmpDir))); err != nil {
+	if err := b.machineRun(mName, "sh", "-c", fmt.Sprintf("tar -C %s -cf - . | tar -C %s -xf -", wsInVM, b.hostPath(tmpDir))); err != nil {
 		return "", fmt.Errorf("export workspace from machine: %w", err)
 	}
 

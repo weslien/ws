@@ -52,7 +52,11 @@ func (b *CopyBackend) CloneGitRepo(repo string, ref string, logger OperationLogg
 		return "", "", fmt.Errorf("temp dir: %w", err)
 	}
 	logger.Log("cloning %s@%s...", repo, ref)
-	cmd := exec.Command("git", "clone", "--depth=1", "--branch="+ref, repo, tmpDir)
+	cmd := exec.Command("git", "clone", "--depth=1")
+	if ref != "" && ref != "HEAD" {
+		cmd.Args = append(cmd.Args, "--branch="+ref)
+	}
+	cmd.Args = append(cmd.Args, repo, tmpDir)
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		cmd = exec.Command("git", "clone", "--depth=1", repo, tmpDir)
@@ -61,7 +65,7 @@ func (b *CopyBackend) CloneGitRepo(repo string, ref string, logger OperationLogg
 			os.RemoveAll(tmpDir)
 			return "", "", fmt.Errorf("git clone failed: %w", err)
 		}
-		if ref != "HEAD" {
+		if ref != "" && ref != "HEAD" {
 			exec.Command("git", "-C", tmpDir, "checkout", ref).Run()
 		}
 	}
