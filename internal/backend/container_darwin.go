@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ContainerBackend uses Apple's 'container' CLI (github.com/apple/container)
@@ -82,7 +83,9 @@ func (b *ContainerBackend) Fork(srcHash string, dstName string, logger Operation
 	mName := b.machineName(dstName)
 
 	// Remove any previous machine with this name.
+	// 'container machine rm -f' often needs a moment for background cleanup.
 	exec.Command("container", "machine", "rm", "-f", mName).Run()
+	time.Sleep(2 * time.Second)
 
 	// Create the machine from a lightweight image.
 	// The image must have 'mount' and a real kernel (any Linux image works).
@@ -90,7 +93,19 @@ func (b *ContainerBackend) Fork(srcHash string, dstName string, logger Operation
 	cmd := exec.Command("container", "machine", "create", "alpine:latest", "--name", mName)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("container machine create: %w\nstderr: %s", err, out)
+		// Stale machine from interrupted prior run: try cleanup + retry once.
+		if strings.Contains(string(out), "already exists") {
+			logger.Log("machine %s still exists, retrying cleanup...", mName)
+			exec.Command("container", "machine", "rm", "-f", mName).Run()
+			time.Sleep(3 * time.Second)
+			cmd = exec.Command("container", "machine", "create", "alpine:latest", "--name", mName)
+			out, err = cmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("container machine create (retry): %w\nstderr: %s\n\nTo manually clean up: container machine rm -f %s", err, out, mName)
+			}
+		} else {
+			return fmt.Errorf("container machine create: %w\nstderr: %s", err, out)
+		}
 	}
 
 	// Paths inside the VM (home directory is auto-mounted by container).
