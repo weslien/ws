@@ -110,6 +110,19 @@ ws graph
 # → Workspaces:
 ```
 
+### macOS: Optional overlayfs via Apple Container
+
+On macOS, `ws` uses directory copies by default (O(n) fork cost). For zero-copy overlayfs (O(1) fork, same as Linux), install [Apple Container](https://github.com/apple/container):
+
+```bash
+brew install container
+container system start   # first run prompts to install a Linux kernel
+```
+
+Requirements: macOS 26 (Tahoe) or later, Apple Silicon (M1+).
+
+Once installed, `ws` auto-detects it and uses Linux VMs with real overlayfs. No configuration needed. To force copy backend: `WS_BACKEND=copy ws ...`
+
 ---
 
 ## Concepts

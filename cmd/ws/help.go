@@ -382,6 +382,43 @@ Platform Differences
   - Both expose the exact same CLI and graph model.
 `
 
+var platformGuide = `PLATFORM BACKENDS
+=================
+
+ws uses different storage backends depending on the platform. All backends
+expose the same CLI and graph model — only performance characteristics differ.
+
+LINUX
+  Backend: overlayfs (via fuse-overlayfs, no root required)
+  Fork cost: O(1) — copy-on-write, zero data duplication
+  Install fuse-overlayfs:  apt install fuse-overlayfs
+                          (or: dnf install fuse-overlayfs)
+
+MACOS (default)
+  Backend: copy (directory copies)
+  Fork cost: O(n) — full copy of layer content
+  No additional dependencies. Works on any macOS version.
+
+MACOS (with Apple Container)
+  Backend: container (Linux VMs with real overlayfs)
+  Fork cost: O(1) — copy-on-write inside a lightweight VM
+  Requirements: macOS 26 (Tahoe) or later, Apple Silicon (M1+)
+  Install:
+    brew install container
+    container system start   # prompts to install a Linux kernel on first run
+  ws auto-detects the container CLI and uses it automatically.
+  Source: https://github.com/apple/container
+
+ENVIRONMENT VARIABLES
+  WS_BACKEND=copy       Force copy backend on any platform
+  WS_BACKEND=container  Force container backend (macOS only)
+
+BACKEND SELECTION
+  Linux:  always overlayfs
+  macOS:  container (if detected) → copy (fallback)
+  Other:  copy
+`
+
 
 func printHelp(topic string) {
 	if topic == "" || topic == "help" {
@@ -397,6 +434,8 @@ func printHelp(topic string) {
 		fmt.Println(agentGuide)
 	case "concepts":
 		fmt.Println(conceptsGuide)
+	case "platform":
+		fmt.Println(platformGuide)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown help topic: %q\n\n", topic)
 		fmt.Print(usageText)
@@ -439,8 +478,10 @@ HELP TOPICS
   ws help get        Detailed help for 'get'
   ws help run        Detailed help for 'run'
   ws help layer      Detailed help for 'layer'
+  ws help status     Detailed help for 'status'
   ws help update     Detailed help for 'update'
   ws help skill      Detailed help for 'skill'
+  ws help platform   Backends, overlayfs, and macOS container setup
   ws help agent      Agent workflows and best practices
   ws help concepts   Key concepts and terminology
 
