@@ -505,6 +505,75 @@ func cmdLayer(args []string, be backend.Backender, store *storage.Store, log bac
 		}
 		store.WriteLayers(layers)
 		fmt.Printf("gc: removed %d unreferenced layers\n", removed)
+	case "diff":
+		if len(args) < 4 {
+			die("usage: ws layer diff <hash-a> <hash-b>")
+		}
+		hashA := strings.TrimPrefix(args[2], "layer:")
+		hashB := strings.TrimPrefix(args[3], "layer:")
+		layers := store.ReadLayers()
+		if _, ok := layers[hashA]; !ok {
+			die("layer %q not found", hashA)
+		}
+		if _, ok := layers[hashB]; !ok {
+			die("layer %q not found", hashB)
+		}
+		dirA := filepath.Join(store.Root(), "layers", hashA)
+		dirB := filepath.Join(store.Root(), "layers", hashB)
+		cmd := exec.Command("diff", "-ruN", dirA, dirB)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			// diff returns exit 1 when files differ — that's not an error
+			if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+				return
+			}
+			die("diff: %v", err)
+		}
+	case "cat":
+		if len(args) < 4 {
+			die("usage: ws layer cat <hash> <path>")
+		}
+		hash := strings.TrimPrefix(args[2], "layer:")
+		relPath := args[3]
+		layers := store.ReadLayers()
+		if _, ok := layers[hash]; !ok {
+			die("layer %q not found", hash)
+		}
+		fullPath := filepath.Join(store.Root(), "layers", hash, relPath)
+		data, err := os.ReadFile(fullPath)
+		if err != nil {
+			die("read: %v", err)
+		}
+		os.Stdout.Write(data)
+	case "path":
+		if len(args) < 3 {
+			die("usage: ws layer path <hash>")
+		}
+		hash := strings.TrimPrefix(args[2], "layer:")
+		layers := store.ReadLayers()
+		if _, ok := layers[hash]; !ok {
+			die("layer %q not found", hash)
+		}
+		fmt.Println(filepath.Join(store.Root(), "layers", hash))
+	case "files":
+		if len(args) < 3 {
+			die("usage: ws layer files <hash>")
+		}
+		hash := strings.TrimPrefix(args[2], "layer:")
+		layers := store.ReadLayers()
+		if _, ok := layers[hash]; !ok {
+			die("layer %q not found", hash)
+		}
+		layerDir := filepath.Join(store.Root(), "layers", hash)
+		filepath.Walk(layerDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return nil
+			}
+			rel, _ := filepath.Rel(layerDir, path)
+			fmt.Println(rel)
+			return nil
+		})
 	default:
 		die("unknown layer subcommand: %s", sub)
 	}

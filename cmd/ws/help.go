@@ -188,11 +188,19 @@ SUBCOMMANDS
   ls                      List all layers with creation time and message.
   show <hash>             Print detailed metadata for a layer.
   gc                      Garbage-collect unreferenced layers.
+  diff <hash-a> <hash-b>  Diff two immutable layers (no workspace needed).
+  cat <hash> <path>       Print a file from a layer to stdout.
+  path <hash>             Print the filesystem path to a layer directory.
+  files <hash>            List all files in a layer (relative paths).
 
 EXAMPLES
   ws layer ls
   ws layer show a3f4d9c2e1b5
   ws layer gc
+  ws layer diff a3f4d9c2e1b5 b7e2f1a09c3d
+  ws layer cat a3f4d9c2e1b5 main.go
+  ws layer path a3f4d9c2e1b5
+  ws layer files a3f4d9c2e1b5
 
 GC BEHAVIOR
   - A layer is "referenced" if it is the formed_from of any workspace,
