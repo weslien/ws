@@ -56,7 +56,23 @@ go build -o ws ./cmd/ws
 sudo mv ws /usr/local/bin/  # optional
 ```
 
-On macOS `ws` uses a copy backend — `overlayfs` is unavailable. The copy backend is O(n) per fork but correct and dependency-free.
+By default, `ws` on macOS uses a **copy backend** — `overlayfs` is unavailable at the macOS kernel level. The copy backend is O(n) per fork but correct and dependency-free.
+
+#### Optional: real overlayfs via `container` ⚡ EXPERIMENTAL
+
+If you have Apple's [`container`](https://github.com/apple/container) installed (macOS 26+, Apple Silicon), `ws` automatically uses it to get real Linux VMs with native overlayfs:
+
+```bash
+# Install container first: https://github.com/apple/container#initial-install
+container system start
+
+# Now ws auto-detects 'container' and routes commands through Linux VMs
+ws get base:https://github.com/you/project --name=feature-a
+ws run feature-a -- ls -la             # executes inside the VM
+ws diff feature-a                     # diff against the VM's overlay lower
+```
+
+This gives you fast, copy-on-write workspace forks on macOS. If `container` is not installed, `ws` falls back silently to the copy backend.
 
 ### Linux (x86_64, ARM64)
 
@@ -287,9 +303,9 @@ Layers are content-addressed by a SHA-256 truncated to 16 hex characters.
 
 ### macOS
 
-- No `overlayfs` support. Uses directory copies for all fork/branch operations.
-- O(n) per fork where n = workspace size. Practical for repos up to a few hundred MB.
-- No additional dependencies beyond Go.
+- By default, uses directory copies for all fork/branch operations (no kernel overlayfs available).
+- If Apple's [`container`](https://github.com/apple/container) is installed, automatically routes through lightweight Linux VMs with native overlayfs. See [Install → macOS](#macos-apple-silicon).
+- No additional dependencies beyond Go (copy backend).
 
 ### Windows
 

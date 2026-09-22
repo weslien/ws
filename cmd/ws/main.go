@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"ws/internal/backend"
-	"ws/internal/storage"
+	"github.com/weslien/ws/internal/backend"
+	"github.com/weslien/ws/internal/storage"
 )
 
 func die(msg string, args ...any) {

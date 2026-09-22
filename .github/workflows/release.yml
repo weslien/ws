@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+          - os: ubuntu-latest
+            goos: windows
+            goarch: amd64
+          - os: ubuntu-latest
+            goos: windows
+            goarch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          bin="ws"
+          if [ "$GOOS" = "windows" ]; then bin="ws.exe"; fi
+          go build -ldflags="-s -w" -o "dist/${bin}" ./cmd/ws
+      - name: Archive
+        run: |
+          bin="ws"
+          if [ "${{ matrix.goos }}" = "windows" ]; then bin="ws.exe"; fi
+          cd dist
+          tar czf "../ws-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" "${bin}"
+          cd ..
+          sha256sum "ws-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" > "ws-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz.sha256"
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ws-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            ws-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
+            ws-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.tar.gz
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+      - name: Upload checksums
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.sha256
+          draft: false
+          prerelease: false
+        continue-on-error: true
