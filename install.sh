@@ -86,10 +86,11 @@ install_prebuilt() {
 }
 
 install_go() {
+  local ver="${1:-}"
   log "Go detected; installing via go install ..."
   local target
-  if [ -n "${VERSION:-}" ]; then
-    target="github.com/${REPO}/cmd/${BINARY}@${VERSION}"
+  if [ -n "${ver:-}" ]; then
+    target="github.com/${REPO}/cmd/${BINARY}@${ver}"
   else
     target="github.com/${REPO}/cmd/${BINARY}@latest"
   fi
@@ -185,13 +186,17 @@ main() {
     log "no prebuilt binary found, trying alternative methods ..."
   fi
 
-  # 2) Try go install
+  # 2) Try go install (skip if version is a non-semver prerelease)
   if command_exists go; then
-    if install_go; then
-      log "success (go install)"
-      return 0
+    if [ -n "${ver:-}" ] && echo "$ver" | grep -qE '^v[0-9]\.'; then
+      if install_go "$ver"; then
+        log "success (go install)"
+        return 0
+      fi
+      log "go install failed, falling back to source build ..."
+    else
+      log "go install: skipping non-semver version '$ver', falling back to source ..."
     fi
-    log "go install failed, falling back to source build ..."
   fi
 
   # 3) Try source build (needs git + go)
