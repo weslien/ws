@@ -1,0 +1,90 @@
+name: Deploy Main
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+          - os: ubuntu-latest
+            goos: windows
+            goarch: amd64
+          - os: ubuntu-latest
+            goos: windows
+            goarch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Test
+        run: go test ./...
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          bin="ws"
+          if [ "$GOOS" = "windows" ]; then bin="ws.exe"; fi
+          go build -ldflags="-s -w" -o "dist/${bin}" ./cmd/ws
+      - name: Archive
+        run: |
+          bin="ws"
+          if [ "${{ matrix.goos }}" = "windows" ]; then bin="ws.exe"; fi
+          cd dist
+          tar czf "../ws-continuous-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" "${bin}"
+          cd ..
+          sha256sum "ws-continuous-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" > "ws-continuous-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz.sha256"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ws-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            ws-continuous-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
+            ws-continuous-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Delete old continuous release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete continuous --yes --cleanup-tag || true
+          sleep 5
+        continue-on-error: true
+      - name: Create continuous prerelease
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create continuous \
+            --prerelease \
+            --title "Continuous Build" \
+            --notes "Latest build from main branch.\n\nCommit: ${{ github.sha }}\n" \
+            artifacts/*.tar.gz
