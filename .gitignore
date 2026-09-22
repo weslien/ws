@@ -1,5 +1,5 @@
 # Binaries
-ws
+/ws
 *.exe
 
 # Go

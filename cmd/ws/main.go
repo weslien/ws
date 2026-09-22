@@ -2,11 +2,16 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
+
+	"encoding/json"
 
 	"github.com/weslien/ws/internal/backend"
 	"github.com/weslien/ws/internal/storage"
@@ -69,6 +74,8 @@ func main() {
 		}
 	case "skill":
 		cmdSkill()
+	case "update":
+		cmdUpdate()
 	default:
 		printHelp("")
 		os.Exit(1)
@@ -496,4 +503,255 @@ func cmdSkill() {
 		}
 	}
 	die("could not install skill; tried: %s", strings.Join(skillLocations(), ", "))
+}
+
+func cmdUpdate() {
+	be, err := newSelfUpdater()
+	if err != nil {
+		die("update: %v", err)
+	}
+	if err := be.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+type selfUpdater struct {
+	repo      string
+	binName   string
+	installer string
+}
+
+func newSelfUpdater() (*selfUpdater, error) {
+	return &selfUpdater{
+		repo:    "github.com/weslien/ws",
+		binName: "ws",
+		installer: "https://raw.githubusercontent.com/weslien/ws/main/install.sh",
+	}, nil
+}
+
+func (s *selfUpdater) Run() error {
+	ex, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("finding self: %w", err)
+	}
+	info, err := os.Stat(ex)
+	if err != nil {
+		return fmt.Errorf("stat self: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		real, err := filepath.EvalSymlinks(ex)
+		if err != nil {
+			return fmt.Errorf("resolve symlink: %w", err)
+		}
+		ex = real
+	}
+	binDir := filepath.Dir(ex)
+
+	// Detect platform
+	goos := runtime.GOOS
+	goarch := runtime.GOARCH
+	// Normalize darwin arch names for Go-style naming used in release artifacts.
+	_ = goarch // always amd64 or arm64 today
+
+	fmt.Printf("current binary: %s\n", ex)
+	fmt.Printf("platform: %s/%s\n", goos, goarch)
+
+	// Strategy 1: try prebuilt release
+	if err := s.tryPrebuilt(ex, goos, goarch); err == nil {
+		fmt.Println("updated via prebuilt release")
+		return nil
+	} else {
+		fmt.Printf("prebuilt: %v\n", err)
+	}
+
+	// Strategy 2: try `go install`
+	fmt.Println("trying go install ...")
+	if err := s.tryGoInstall(ex); err == nil {
+		fmt.Println("updated via go install")
+		return nil
+	} else {
+		fmt.Printf("go install: %v\n", err)
+	}
+
+	// Strategy 3: installer script
+	fmt.Println("trying installer script ...")
+	if err := s.tryInstaller(binDir); err == nil {
+		fmt.Println("updated via installer script")
+		return nil
+	} else {
+		fmt.Printf("installer: %v\n", err)
+	}
+
+	// Strategy 4: source build
+	fmt.Println("trying source build ...")
+	if err := s.trySource(binDir); err == nil {
+		fmt.Println("updated via source build")
+		return nil
+	} else {
+		fmt.Printf("source: %v\n", err)
+	}
+
+	return fmt.Errorf("all update strategies failed")
+}
+
+func (s *selfUpdater) tryPrebuilt(currentPath, goos, goarch string) error {
+	latestTag, err := s.fetchLatestTag()
+	if err != nil {
+		return err
+	}
+	if latestTag == "" {
+		return fmt.Errorf("no version tag found")
+	}
+
+	assetURL := fmt.Sprintf("https://github.com/%s/releases/download/%s/ws-%s-%s-%s.tar.gz", s.repo, latestTag, latestTag, goos, goarch)
+	fmt.Printf("downloading %s ...\n", assetURL)
+
+	resp, err := http.Get(assetURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "ws-update-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
+	tarPath := filepath.Join(tmpDir, "ws.tar.gz")
+	f, err := os.Create(tarPath)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		f.Close()
+		return err
+	}
+	f.Close()
+
+	if err := exec.Command("tar", "xzf", tarPath, "-C", tmpDir).Run(); err != nil {
+		return fmt.Errorf("untar: %w", err)
+	}
+	newBin := filepath.Join(tmpDir, s.binName)
+	if runtime.GOOS == "windows" {
+		newBin = filepath.Join(tmpDir, s.binName+".exe")
+	}
+	if _, err := os.Stat(newBin); err != nil {
+		return fmt.Errorf("no binary found in archive")
+	}
+	return s.replaceInPlace(currentPath, newBin)
+}
+
+func (s *selfUpdater) tryGoInstall(currentPath string) error {
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(goBin, "install", s.repo+"/cmd/"+s.binName+"@latest")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	// go install puts the binary in GOPATH/bin or GOBIN.
+	// Find it via `go env GOPATH` + /bin/ws, or GOBIN.
+	gobin := os.Getenv("GOBIN")
+	if gobin == "" {
+		gopath, err := exec.Command(goBin, "env", "GOPATH").Output()
+		if err != nil {
+			return fmt.Errorf("go env GOPATH: %w", err)
+		}
+		gobin = filepath.Join(strings.TrimSpace(string(gopath)), "bin")
+	}
+	newBin := filepath.Join(gobin, s.binName)
+	if runtime.GOOS == "windows" {
+		newBin += ".exe"
+	}
+	return s.replaceInPlace(currentPath, newBin)
+}
+
+func (s *selfUpdater) tryInstaller(binDir string) error {
+	curl, err := exec.LookPath("curl")
+	if err != nil {
+		return err
+	}
+	tmpDir, err := os.MkdirTemp("", "ws-update-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
+	scriptPath := filepath.Join(tmpDir, "install.sh")
+	cmd := exec.Command(curl, "-fsSL", "-o", scriptPath, s.installer)
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	if err := os.Chmod(scriptPath, 0755); err != nil {
+		return err
+	}
+	inst := exec.Command("bash", scriptPath)
+	inst.Stdout = os.Stdout
+	inst.Stderr = os.Stderr
+	return inst.Run()
+}
+
+func (s *selfUpdater) trySource(binDir string) error {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		return err
+	}
+	tmpDir, err := os.MkdirTemp("", "ws-update-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
+	src := filepath.Join(tmpDir, "src")
+	cmd := exec.Command(git, "clone", "--depth", "1", "https://"+s.repo+".git", src)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	build := exec.Command("go", "build", "-o", filepath.Join(binDir, s.binName), "./cmd/"+s.binName)
+	build.Dir = src
+	build.Stdout = os.Stdout
+	build.Stderr = os.Stderr
+	return build.Run()
+}
+
+func (s *selfUpdater) fetchLatestTag() (string, error) {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", s.repo)
+	resp, err := http.Get(apiURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+	}
+	var payload struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", err
+	}
+	return payload.TagName, nil
+}
+
+func (s *selfUpdater) replaceInPlace(currentPath, newBin string) error {
+	// atomic overwrite: move old to .old, move new to path
+	old := currentPath + ".old"
+	if err := os.Rename(currentPath, old); err != nil {
+		return fmt.Errorf("backup old: %w", err)
+	}
+	if err := os.Rename(newBin, currentPath); err != nil {
+		// attempt restore
+		_ = os.Rename(old, currentPath)
+		return fmt.Errorf("install new: %w", err)
+	}
+	// remove old backup silently (best-effort)
+	_ = os.Remove(old)
+	return nil
 }
