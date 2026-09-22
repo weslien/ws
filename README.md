@@ -1,221 +1,365 @@
-# ws — workspace graph CLI (v1, macOS copy backend)
+# ws
 
-A CLI tool for managing **workspace graphs** using immutable layers and mutable workspaces. Designed for multi-agent code isolation, where sometimes you want to share state (branch from another agent's workspace) and sometimes you want to isolate (fork from a base layer).
+**Fast, lightweight workspace graphs for Git repositories.**
 
-On macOS (no native `overlayfs`), the backend uses full directory copies. On Linux, the backend swaps copies for `overlayfs` mounts — the CLI and graph model stay identical.
+`ws` creates **mutable workspaces** from **immutable layers** — think lightweight branching for entire working directories. Branch from another agent's workspace. Isolate to a clean base. Diff, commit, and garbage-collect — all without touching Git itself.
 
----
-
-## Quick Start
+On Linux, workspaces are [overlayfs](https://docs.kernel.org/filesystems/overlayfs.html) mounts (instant fork, zero-copy). On macOS, they use efficient directory copies. The **CLI and graph model are identical** on both platforms.
 
 ```bash
-# Build
-cd ~/workspace/ws-cli && go build -o ws .
+# Start from a repository
+$ ws get base:https://github.com/you/project --name=feature-a
+workspace feature-a formed from a3f4d...
 
-# 1. Form a workspace from a git repo
-./ws get base:/path/to/repo --name=agent-a
+# Work inside it
+$ ws run feature-a -- npm install
 
-# 2. Run commands inside it
-./ws run agent-a -- cat package.json
+# Branch — build on another agent's work
+$ ws get ws:feature-a --name=feature-b
+workspace feature-b formed from 8c2e1...
 
-# 3. Branch it — agent-b sees agent-a's current state
-./ws get ws:agent-a --name=agent-b
+# Diff against the base
+$ ws diff feature-a
+--- a/package.json
++++ b/package.json
+@@ -1,3 +1,5 @@
+ {
+-  "version": "1.0.0"
++  "version": "1.1.0"
+   "dependencies": {
+     "express": "^4.21.0"
++    "lodash": "^4.17.21"
 
-# 4. Or isolate — agent-c starts from the original base
-./ws get layer:4f76d0bd87b40443 --name=agent-c
+# Promote changes to a permanent layer
+$ ws keep feature-a --message="added lodash"
+kept layer 8c2e1ba7d3f4...
 
-# 5. Diff against fork point or cross-diff
-./ws diff agent-a              # vs original base layer
-./ws diff agent-a agent-b      # two workspaces head-to-head
-
-# 6. Commit a workspace to a permanent, content-addressed layer
-./ws keep agent-a --message="installed dependencies"
-
-# 7. Drop a workspace when done (changes lost unless kept)
-./ws drop agent-a
-
-# 8. View the graph
-./ws graph                   # all layers + workspaces
-./ws graph agent-b           # provenance tree for a workspace
-
-# 9. Layer management
-./ws layer ls                # list all layers
-./ws layer show <hash>      # layer metadata
-./ws layer gc               # garbage-collect unreferenced layers
+# See the graph
+$ ws graph feature-b
+ws:feature-b [active]
+  └─ layer:8c2e1ba7d3f4 [added lodash]
+    └─ layer:a3f4d9c2e1b5 [base:https://github.com/you/project#HEAD]
 ```
 
 ---
 
-## Commands
+## Install
 
-| Command | Args | What it does |
-|---------|------|-------------|
-| `get` | `<source> --name=<ws>` | Create a workspace from a layer, another workspace, or a git repo |
-| `run` | `<ws> -- <cmd>` | Execute a command inside a workspace's filesystem |
-| `diff` | `<ws> [ws-B \| layer:hash]` | Diff workspace vs its base, or vs another workspace/layer |
-| `keep` | `<ws> [--message=<msg>]` | Materialize workspace changes as an immutable layer |
-| `drop` | `<ws>` | Destroy workspace (uncommitted changes are lost) |
-| `graph` | `[ws]` | Print the layer + workspace DAG |
-| `layer` | `ls \| show <hash> \| gc` | Layer operations |
+### macOS (Apple Silicon)
 
-### Source types for `get`
+Requires Go 1.23+.
 
-- `layer:<hash>` — fork from an immutable layer
-- `ws:<name>` — branch from another workspace's current state (live copy)
-- `base:<repo>#<ref>` — clone a git repo, auto-layerize it, fork from the result
+```bash
+git clone https://github.com/weslien/ws.git
+cd ws
+go build -o ws ./cmd/ws
+sudo mv ws /usr/local/bin/  # optional
+```
+
+On macOS `ws` uses a copy backend — `overlayfs` is unavailable. The copy backend is O(n) per fork but correct and dependency-free.
+
+### Linux (x86_64, ARM64)
+
+Requires Go 1.23+ and `fuse-overlayfs` (for unprivileged overlay mounts).
+
+```bash
+# Debian / Ubuntu
+sudo apt install fuse-overlayfs  # or: sudo apt install fuse3
+
+# Fedora / RHEL
+sudo dnf install fuse-overlayfs
+
+# Build
+git clone https://github.com/weslien/ws.git
+cd ws
+go build -o ws ./cmd/ws
+sudo mv ws /usr/local/bin/  # optional
+```
+
+### Verify
+
+```bash
+ws graph
+# → Layers:
+# → Workspaces:
+```
 
 ---
 
 ## Concepts
 
-### Layer (immutable)
-Content-addressed directory, stored in `~/.ws/layers/<hash>`. Once created, never changes. The unit of sharing.
+| Term | Definition |
+|------|-----------|
+| **Layer** | An immutable, content-addressed directory. Stored in `~/.ws/layers/<hash>`. Once created, never changes. The unit of sharing. |
+| **Workspace** | A mutable working directory. Stored in `~/.ws/workspaces/<name>`. Created from a layer (`formed_from`). You `keep` it to promote to a new layer, or `drop` it to destroy. |
+| **Graph** | The provenance chain of a workspace: the sequence of `parent` → `parent` → base layers. `ws graph` prints this tree. |
 
-### Workspace (mutable)
-Named working directory in `~/.ws/workspaces/<name>`. Each workspace was formed from a layer (`formed_from`). You can `keep` it to promote it to a new layer, or `drop` it to destroy.
+### How it differs from Git worktrees
 
-### Graph
-A workspace or layer has provenance: the chain of `parent` → `parent` → base. `graph` prints this tree.
+Git worktrees let you check out multiple branches into separate directories. `ws` is different:
 
-### Merge semantics
-There is **no `merge` command**. Overlayfs doesn't merge — it overlays. True merge (conflict resolution) is policy, not storage. Do it in a workspace with standard tools (git, diff3), then `keep` the result.
+- **Branch from uncommitted work** — `ws get ws:agent-a` captures agent-a's current dirty state, not just a committed branch.
+- **Isolation is explicit** — `ws get layer:base` gives a clean slate from the immutable base, not whatever happens to be on `main` right now.
+- **No Git indexing** — operations don't touch `.git/index`, so there's no risk of index corruption from concurrent agent access.
+- **Content-addressed base layers** — a layer with hash `a3f4d...` is *exactly* that content, forever. No ambiguity about what "HEAD" meant at fork time.
 
----
+### Source types
 
-## macOS Backend (v1)
-
-macOS lacks `overlayfs`. Current backend:
-- `get` → `cp -R` the source to the workspace directory
-- `keep` → `cp -R` workspace to a new layer directory; compute hash
-- `run` → `cd` into workspace, execute
-- `diff` → `diff -ruN`
-
-This is **correct but O(n)** per fork. A 100MB repo = 100MB copy each time. Acceptable for a prototype used on small repos.
-
-### Path to Linux `overlayfs` Backend
-
-Replace four implementation functions, keep everything else:
-
-| Operation | macOS (now) | Linux (target) |
-|-----------|-------------|----------------|
-| Fork workspace | `cp -R` | `mount -t overlay lowerdir=<layer>,upperdir=<new>,workdir=<work>` |
-| Branch workspace | `cp -R` | `mount -t overlay lowerdir=<ws>:<base>,upperdir=<new>,workdir=<work>` |
-| Keep layer | `cp -R` + hash | `sync` upperdir + `umount` |
-| Drop workspace | `rm -rf` | `umount` + `rm -rf` upperdir |
-
-The CLI, graph logic, metadata, and `diff`/`graph`/`layer` commands are unchanged.
+| Source | Meaning |
+|--------|---------|
+| `layer:<hash>` | Fork from an immutable layer |
+| `ws:<name>` | Branch from another workspace's current state (snapshot-first) |
+| `base:<repo>#<ref>` | Clone a git repo, create a layer from it, fork from that layer |
 
 ---
 
-## Data Model
+## Commands
 
-```yaml
-Layer:
-  hash: sha256:abc...
-  parent: sha256:def...       # single parent for linear history
-  basis: [sha256:def...]     # multi-lower for unions (future)
-  message: "installed deps"
-  created_at: 2026-09-22T...
-  committed_by: agent-a
+| Command | Description |
+|---------|-------------|
+| `ws get <source> --name=<ws>` | Create a workspace from a layer, another workspace, or a git repo |
+| `ws run <ws> -- <cmd...>` | Execute a command inside a workspace's filesystem |
+| `ws diff <ws> [target]` | Diff workspace vs its base, or vs another workspace/layer |
+| `ws keep <ws> [--message=...]` | Materialize workspace changes as an immutable layer |
+| `ws drop <ws>` | Destroy workspace and all uncommitted changes |
+| `ws graph [ws]` | Print the layer + workspace DAG, or a specific workspace's provenance |
+| `ws layer ls` | List all layers |
+| `ws layer show <hash>` | Show layer metadata |
+| `ws layer gc` | Garbage-collect unreferenced layers |
 
-Workspace:
-  name: agent-a
-  source: layer:abc...       # what it was created from
-  formed_from: abc...       # the layer hash (for provenance)
-  state: active
-  created_at: 2026-09-22T...
-```
 
-Metadata is JSON: `~/.ws/meta/layers.json`, `~/.ws/meta/workspaces.json`.
-
----
-
-## Known Issues / Limitations
-
-1. **Local git clone with `--depth=1` is ignored for `file://` repos.** Go's `os/exec` passes `--depth=1` but Git silences it for local paths. This is harmless — the full history is cloned. For remote repos, `--depth=1` works correctly.
-2. **Branching from a workspace copies its ENTIRE current state** (not just committed layers). If you branch `ws:agent-a` and then `agent-a` continues working, `agent-b` won't see new changes. To share new work, `keep` agent-a first.
-3. **No directory rename optimization.** Large directory moves trigger full copy-up. Acceptable for V1.
-4. **No concurrent workspace access safety.** Two `run` commands in the same workspace race on the filesystem. Kata containers solve this in practice (each agent in its own VM).
-5. **hashDir() is naive.** It reads every file and hashes content sequentially. Fast enough for small repos (sub-second), not for GB-scale.
-
----
-
-## Tested Scenario (from actual run)
+### `ws get` — Create a workspace
 
 ```bash
-# Create a test repo
-mkdir /tmp/test-repo && cd /tmp/test-repo
-git init && echo '{"name": "myproject"}' > package.json
-git add . && git commit -m "initial"
+# From a layer
+ws get layer:a3f4d9c2e1b5 --name=feature-a
 
-# Form workspace from it
-./ws get base:/tmp/test-repo --name=agent-1
-# → created layer 4f76d0bd87b40443
-# → workspace agent-1 formed from 4f76d0bd87b40443
+# From another workspace (snapshot first, branch second)
+ws get ws:feature-a --name=feature-b
 
-# Mutate
-./ws run agent-1 -- sh -c 'echo {"version": "1.0"} > package.json'
-./ws diff agent-1
-# → shows package.json changed
+# From a git repo
+ws get base:https://github.com/you/project#main --name=feature-c
+ws get base:/path/to/local/repo --name=feature-d
+```
 
-# Branch: agent-2 sees agent-1's mutated state (copy backend)
-./ws get ws:agent-1 --name=agent-2
-./ws run agent-2 -- cat package.json
-# → {version: 1.0}
+### `ws run` — Execute inside a workspace
 
-# Isolate: agent-3 gets the original base
-./ws get layer:4f76d0bd87b40443 --name=agent-3
-./ws run agent-3 -- cat package.json
-# → {"name": "myproject"}
+```bash
+ws run feature-a -- cat package.json
+ws run feature-a -- npm install
+ws run feature-a -- go test ./...
+```
 
-# Commit agent-1's changes
-./ws keep agent-1 --message="added version"
-# → kept layer 52fafb35bf49e28f
+On Linux, the workspace is a mounted overlayfs — all writes go to the private upper directory.
 
-# Cross-diff: agent-2 vs agent-3
-./ws diff agent-2 agent-3
-# → diff shows the version change
+### `ws diff` — Compare changes
 
-# Graph
-./ws graph agent-2
-# ws:agent-2 [active]
-#   └─ layer:4f76d0bd87b40443 [base:/tmp/test-repo#HEAD]
+```bash
+# Diff workspace vs the layer it was forked from
+ws diff feature-a
 
-# Drop a workspace
-./ws drop agent-3
+# Diff two workspaces
+ws diff feature-a feature-b
 
-# GC removes layers nobody references
-./ws layer gc
-# → gc: removed 1 unreferenced layers
+# Diff workspace vs a specific layer
+ws diff feature-a layer:a3f4d9c2e1b5
+```
 
-# Still works
-./ws run agent-1 -- cat package.json
-# → {version: 1.0}
+### `ws keep` — Promote to layer
+
+```bash
+ws keep feature-a --message="installed dependencies"
+# → kept layer 8c2e1ba7d3f4
+```
+
+After `keep`, the new layer is recorded in the graph. The workspace now tracks from the new layer as its base.
+
+### `ws drop` — Destroy
+
+```bash
+ws drop feature-a
+```
+
+All uncommitted changes are lost. The workspace directory is removed.
+
+### `ws graph` — Visualize
+
+```bash
+# All layers and workspaces
+ws graph
+
+# Provenance tree for a specific workspace
+ws graph feature-b
+```
+
+### `ws layer` — Layer management
+
+```bash
+ws layer ls
+ws layer show a3f4d9c2e1b5
+ws layer gc        # removes layers no longer referenced by any workspace
 ```
 
 ---
 
-## Files
+## Worked Example
 
-- `~/workspace/ws-cli/ws` — built binary
-- `~/workspace/ws-cli/main.go` — source
-- `~/.ws/layers/` — immutable layers
-- `~/.ws/workspaces/` — mutable workspaces
-- `~/.ws/meta/` — JSON metadata
+```bash
+# 1. Create a test repository
+mkdir /tmp/demo && cd /tmp/demo
+git init
+echo '{"name": "demo"}' > package.json
+git add . && git commit -m "initial"
+
+# 2. Form a workspace
+ws get base:/tmp/demo --name=agent-1
+# → created layer a3f4d9c2e1b5...
+# → workspace agent-1 formed from a3f4d9c2e1b5
+
+# 3. Modify
+ws run agent-1 -- sh -c 'echo {"version": "1.0"} > package.json'
+ws diff agent-1
+# → --- package.json
+# → +++ package.json
+# → @@ -1 +1 @@
+# → -{"name": "demo"}
+# → +{"version": "1.0"}
+
+# 4. Branch — agent-2 sees agent-1's work
+ws get ws:agent-1 --name=agent-2
+ws run agent-2 -- cat package.json
+# → {"version": "1.0"}
+
+# 5. Isolate — agent-3 gets the clean base
+ws get layer:a3f4d9c2e1b5 --name=agent-3
+ws run agent-3 -- cat package.json
+# → {"name": "demo"}
+
+# 6. Commit agent-1's changes
+ws keep agent-1 --message="added version"
+# → kept layer 8c2e1ba7d3f4...
+
+# 7. See the graph
+ws graph agent-2
+# ws:agent-2 [active]
+#   └─ layer:8c2e1ba7d3f4 [added version]
+#     └─ layer:a3f4d9c2e1b5 [base:/tmp/demo#HEAD]
+
+# 8. Clean up
+ws drop agent-3
+ws layer gc
+```
 
 ---
 
-## Next Steps
+## Storage Layout
 
-1. **Linux `overlayfs` backend** — swap `copyDir` for `mount` + `umount`
-2. **Merkle-tree hashing** — `hashDir()` is O(n) per file; Merkle tree enables partial diff
-3. **Daemon mode (`wsd`)** — mount lifecycle management, garbage collection background, API for Kata/fa-serve integration
-4. **Union layers** — `ws layer union a b` creates an ordered overlay (lowerdir=b:a:base)
-5. **Workspace handoff** — `ws hand agent-a --to=agent-b` (ownership transfer)
-6. **Merge workspace** — special workspace that mounts two layers + a conflict-view tool
+```
+~/.ws/
+├── layers/
+│   ├── a3f4d9c2e1b5/          # immutable layer content
+│   └── 8c2e1ba7d3f4/
+├── workspaces/
+│   ├── agent-1/                # mutable workspace (overlay mount on Linux)
+│   └── agent-2/
+├── uppers/                     # overlayfs upper dirs (Linux only)
+│   ├── agent-1/
+│   └── agent-2/
+├── workdirs/                   # overlayfs work dirs (Linux only)
+│   ├── agent-1/work/
+│   └── agent-2/work/
+└── meta/
+    ├── layers.json             # layer metadata (parent, message, timestamp)
+    └── workspaces.json         # workspace metadata (formed_from, state)
+```
+
+Layers are content-addressed by a SHA-256 truncated to 16 hex characters.
+
+---
+
+## Platform Notes
+
+### Linux
+
+- Uses `fuse-overlayfs` for unprivileged overlay mounts — no `sudo` required.
+- `fuse-overlayfs` packages: `fuse-overlayfs` (Debian/Ubuntu), `fuse3` (Alpine), or compile from [source](https://github.com/containers/fuse-overlayfs).
+- Each workspace = one overlay mount. Forking snapshots the source workspace to a new layer first, then mounts the new workspace from that layer.
+
+### macOS
+
+- No `overlayfs` support. Uses directory copies for all fork/branch operations.
+- O(n) per fork where n = workspace size. Practical for repos up to a few hundred MB.
+- No additional dependencies beyond Go.
+
+### Windows
+
+- Not currently supported. Contributions welcome.
+
+---
+
+## Architecture
+
+```
+internal/backend/
+  backend.go              — Backender interface (platform abstraction)
+  copy.go                 — CopyBackend (macOS, Windows fallback)
+  overlayfs_linux.go      — OverlayfsBackend (Linux, fuse-overlayfs)
+  platform*.go            — Build-tag backend selection
+
+internal/storage/
+  metadata.go             — JSON metadata for layers and workspaces
+
+cmd/ws/main.go            — CLI
+```
+
+Adding a new backend (e.g., `container` on macOS 26, APFS clone, or ZFS snapshot) requires implementing the `Backender` interface. The CLI, graph engine, and metadata layer are platform-agnostic.
+
+---
+
+## FAQ
+
+**Q: Why not just use Git worktrees?**
+
+Git worktrees are great for human developers working on committed branches. `ws` is designed for agents that may have:
+- Uncommitted state that another agent wants to build on
+- Concurrent access to the same repo (no index races)
+- Need to isolate to a guaranteed-clean base, not "whatever main is now"
+
+**Q: Can I use this to replace Docker volumes or dev containers?**
+
+Not directly — `ws` is a filesystem primitive, not a runtime. But it's designed to compose cleanly with containers: a container runtime can mount a `ws` workspace as its working directory.
+
+**Q: Does `ws` track file renames efficiently?**
+
+Not yet — renames trigger full copy-up on the copy backend, and overlayfs handles them at the filesystem level on Linux. A Merkle-tree content-addressed backend would optimize this.
+
+**Q: How do I clean up old layers?**
+
+`ws layer gc` removes any layer not transitively reachable from a live workspace. Run it periodically.
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a branch: `git checkout -b feature/xyz`
+3. Make your changes
+4. Run `go test ./...` and `go vet ./...`
+5. Submit a pull request
+
+Please open an issue before major design changes.
+
+---
+
+## Acknowledgments
+
+Inspired by:
+- [Git worktrees](https://git-scm.com/docs/git-worktree) — the original multi-workspace idea
+- [Docker overlayfs driver](https://docs.docker.com/storage/storagedriver/overlayfs-driver/) — the filesystem layering model
+- [Nix store](https://nixos.org/manual/nix/stable/store/) — content-addressed store paths
 
 ---
 
 ## License
 
-Internal prototype for evroc. Not open-sourced.
+MIT — see [LICENSE](LICENSE).

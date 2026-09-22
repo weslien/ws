@@ -1,0 +1,16 @@
+# Binaries
+ws
+*.exe
+
+# Go
+*.test
+*.out
+vendor/
+
+# Workspace data (user's local)
+/.ws/
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
