@@ -46,7 +46,11 @@ resolve_version() {
     latest=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep -oP '"tag_name":\s*"\K[^"]+' || true)
   fi
   if [ -z "${latest:-}" ]; then
-    # No releases yet — can't determine version
+    # No semver releases yet — fall back to continuous prerelease
+    latest=$(curl -sL "https://api.github.com/repos/${REPO}/releases/tags/continuous" 2>/dev/null | grep -oP '"tag_name":\s*"\K[^"]+' || true)
+  fi
+  if [ -z "${latest:-}" ]; then
+    # No releases at all — can't determine version
     echo ""
     return 1
   fi
