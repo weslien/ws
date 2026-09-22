@@ -31,6 +31,7 @@ type Store struct {
 }
 
 func NewStore(root string) *Store { return &Store{root: root} }
+func (s *Store) Root() string         { return s.root }
 func (s *Store) metaDir() string  { return filepath.Join(s.root, "meta") }
 func (s *Store) layersFile() string {
 	_ = os.MkdirAll(s.metaDir(), 0755)

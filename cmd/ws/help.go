@@ -28,6 +28,9 @@ SOURCE TYPES
 
 OPTIONS
   --name=<name>     Required. The name of the new workspace.
+  --force            If a workspace with this name already exists, drop it
+                    and create a fresh one. Useful for agents that don't know
+                    if a previous run left stale workspaces.
 
 EXAMPLES
   ws get base:https://github.com/you/project#main --name=feature-a
@@ -155,6 +158,27 @@ NOTES
   - Inactive (dropped) workspaces do not appear.
   - Orphan layers (not reachable from any workspace) still appear in 'ws layer ls'
     but are hidden from graph. Use 'ws layer gc' to remove them.`,
+
+	"status": `ws status
+
+Show all active workspaces with their current state.
+
+OUTPUT
+  WORKSPACE    Name of the workspace.
+  LAYER        The layer hash the workspace is formed from (truncated).
+  DIRTY        'yes' if the workspace has uncommitted changes, 'no' if clean.
+  MESSAGE      The message of the base layer (truncated to 20 chars).
+  CREATED      ISO timestamp of workspace creation.
+
+EXAMPLES
+  ws status
+
+NOTES
+  - DIRTY is computed by comparing the workspace's content hash against
+    its formed_from layer hash. If they match, the workspace is clean.
+  - This is the primary command for agents to discover what other agents
+    are working on and whether their work is committed.
+  - For the full dependency graph, use 'ws graph'.`,
 
 	"layer": `ws layer <subcommand>
 
@@ -391,6 +415,7 @@ COMMANDS
   keep   <ws> [--message=...]    Promote workspace changes to a new layer
   drop   <ws>                    Destroy workspace (changes lost unless kept)
   graph  [ws]                    Print layer/workspace dependency graph
+  status                          Show all workspaces with dirty/clean state
   layer   <ls|show|gc>           Manage the immutable layer store
   skill                           Install the ws-workspace-graph agent skill
   update                          Update ws to the latest release

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -67,6 +68,8 @@ func main() {
 		cmdDrop(args, be, store, logger)
 	case "graph":
 		cmdGraph(args, be, store, logger)
+	case "status":
+		cmdStatus(args, be, store, logger)
 	case "layer":
 		cmdLayer(args, be, store, logger)
 	case "help":
@@ -107,9 +110,13 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 	}
 	source := args[1]
 	var name string
+	force := false
 	for _, a := range args[2:] {
 		if strings.HasPrefix(a, "--name=") {
 			name = strings.TrimPrefix(a, "--name=")
+		}
+		if a == "--force" || a == "-f" {
+			force = true
 		}
 	}
 	if name == "" {
@@ -117,7 +124,15 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 	}
 	workspaces := store.ReadWorkspaces()
 	if _, ok := workspaces[name]; ok {
-		die("workspace %q already exists", name)
+		if !force {
+			die("workspace %q already exists (use --force to replace)", name)
+		}
+		log.Log("workspace %q exists, dropping (--force)...", name)
+		if err := be.Destroy(name, log); err != nil {
+			log.Error("force-drop: %v", err)
+		}
+		delete(workspaces, name)
+		store.WriteWorkspaces(workspaces)
 	}
 
 	var formedFrom string
@@ -371,6 +386,64 @@ func cmdGraph(args []string, be backend.Backender, store *storage.Store, log bac
 			depth++
 		}
 	}
+}
+
+func cmdStatus(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
+	if len(args) > 1 && containsHelp(args) {
+		printHelp("status")
+		return
+	}
+	workspaces := store.ReadWorkspaces()
+	layers := store.ReadLayers()
+
+	if len(workspaces) == 0 {
+		fmt.Println("No active workspaces.")
+		return
+	}
+
+	// Sort workspace names for stable output
+	names := make([]string, 0, len(workspaces))
+	for n := range workspaces {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	// Table header
+	fmt.Printf("%-20s %-20s %-8s %-20s %s\n", "WORKSPACE", "LAYER", "DIRTY", "MESSAGE", "CREATED")
+	fmt.Printf("%-20s %-20s %-8s %-20s %s\n", strings.Repeat("-", 20), strings.Repeat("-", 20), strings.Repeat("-", 8), strings.Repeat("-", 20), strings.Repeat("-", 20))
+
+	for _, name := range names {
+		w := workspaces[name]
+		layerHash := w.FormedFrom
+
+		// Get the layer's message
+		msg := ""
+		if l, ok := layers[layerHash]; ok {
+			msg = l.Message
+		}
+		if len(msg) > 20 {
+			msg = msg[:17] + "..."
+		}
+
+		// Check if workspace is dirty (hash differs from layer)
+		dirty := "?"
+		wsHash := be.LayerHash(filepath.Join(store.Root(), "workspaces", name))
+		if wsHash == layerHash {
+			dirty = "no"
+		} else {
+			dirty = "yes"
+		}
+
+		created := w.CreatedAt
+		if len(created) > 20 {
+			created = created[:20]
+		}
+
+		fmt.Printf("%-20s %-20s %-8s %-20s %s\n", name, layerHash[:12], dirty, msg, created)
+	}
+
+	// Summary line
+	fmt.Printf("\n%d workspaces, %d layers\n", len(workspaces), len(layers))
 }
 
 func cmdLayer(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
