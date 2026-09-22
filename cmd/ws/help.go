@@ -373,7 +373,7 @@ func printHelp(topic string) {
 }
 
 func printVersion() {
-	fmt.Println("ws 0.1.8")
+	fmt.Println("ws 0.1.9")
 }
 
 const usageText = `ws — workspace graph CLI
