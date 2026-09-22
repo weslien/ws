@@ -44,7 +44,7 @@ jobs:
         run: |
           bin="ws"
           if [ "$GOOS" = "windows" ]; then bin="ws.exe"; fi
-          go build -ldflags="-s -w" -o "dist/${bin}" ./cmd/ws
+          go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o "dist/${bin}" ./cmd/ws
       - name: Archive
         run: |
           bin="ws"

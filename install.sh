@@ -106,12 +106,21 @@ install_go() {
 
 install_source() {
   log "building from source ..."
+  local ver="${1:-}"
   local tmpdir
   tmpdir=$(mktemp -d)
 
   local repo_dir="${tmpdir}/src"
   git clone --depth 1 "https://github.com/${REPO}.git" "${repo_dir}"
-  (cd "${repo_dir}" && go build -o "${tmpdir}/${BINARY}.bin" "./cmd/${BINARY}")
+  local ldflags=""
+  if [ -n "${ver:-}" ]; then
+    ldflags="-X main.version=${ver}"
+  fi
+  if [ -n "${ldflags:-}" ]; then
+    (cd "${repo_dir}" && go build -ldflags "${ldflags}" -o "${tmpdir}/${BINARY}.bin" "./cmd/${BINARY}")
+  else
+    (cd "${repo_dir}" && go build -o "${tmpdir}/${BINARY}.bin" "./cmd/${BINARY}")
+  fi
   install_binary "${tmpdir}/${BINARY}.bin"
   rm -rf "${tmpdir}"
 }
@@ -202,7 +211,7 @@ main() {
 
   # 3) Try source build (needs git + go)
   if command_exists git && command_exists go; then
-    if install_source; then
+    if install_source "$ver"; then
       log "success (built from source)"
       return 0
     fi

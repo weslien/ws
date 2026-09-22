@@ -17,6 +17,9 @@ import (
 	"github.com/weslien/ws/internal/storage"
 )
 
+// version is set at build time via ldflags: -X main.version=v0.2.2
+var version = "dev"
+
 func die(msg string, args ...any) {
 	fmt.Fprintf(os.Stderr, "error: "+msg+"\n", args...)
 	os.Exit(1)
