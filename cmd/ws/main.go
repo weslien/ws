@@ -67,6 +67,8 @@ func main() {
 		} else {
 			printHelp("")
 		}
+	case "skill":
+		cmdSkill()
 	default:
 		printHelp("")
 		os.Exit(1)
@@ -423,4 +425,75 @@ func cmdLayer(args []string, be backend.Backender, store *storage.Store, log bac
 	default:
 		die("unknown layer subcommand: %s", sub)
 	}
+}
+
+// skillLocations returns the directories where Hermes skill stores are expected.
+func skillLocations() []string {
+	var dirs []string
+	home := os.Getenv("HOME")
+	if home == "" {
+		home = os.Getenv("USERPROFILE") // Windows fallback
+	}
+	// Default Hermes skill directory — note: this may differ if the user
+	// customised their profile. These are the most common paths.
+	for _, path := range []string{
+		filepath.Join(home, ".hermes", "skills"),
+		filepath.Join(home, ".config", "hermes", "skills"),
+		filepath.Join(home, ".hermes", "profiles", "default", "skills"),
+	} {
+		dirs = append(dirs, path)
+	}
+	return dirs
+}
+
+func cmdSkill() {
+	// Determine source directory: prefer filesystem assets, fall back to embedded.
+	ex, err := os.Executable()
+	if err != nil {
+		die("cannot locate self: %v", err)
+	}
+	binDir := filepath.Dir(ex)
+	src := filepath.Join(binDir, "assets", "skill", defaultSkillName)
+	fallbackMode := false
+	if _, err := os.Stat(src); os.IsNotExist(err) {
+		// Embedded fallback for release binaries or go-install installs.
+		tmpDir, err := os.MkdirTemp("", "ws-skill-*")
+		if err != nil {
+			die("cannot create temp dir: %v", err)
+		}
+		defer os.RemoveAll(tmpDir)
+		skillDir := filepath.Join(tmpDir, defaultSkillName)
+		if err := os.MkdirAll(skillDir, 0755); err != nil {
+			die("cannot create skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(defaultSkillContent), 0644); err != nil {
+			die("cannot write embedded skill: %v", err)
+		}
+		// Note: the built-in help text matches this file. If you update SKILL.md
+		// in the repo, regenerate skill-embedded.go so the binary stays in sync.
+		src = skillDir
+		fallbackMode = true
+	}
+
+	for _, dst := range skillLocations() {
+		if err := os.MkdirAll(dst, 0755); err != nil {
+			continue
+		}
+		if _, err := os.Stat(dst); err == nil {
+			target := filepath.Join(dst, defaultSkillName)
+			// Remove previous installation if present
+			_ = os.RemoveAll(target)
+			if err := os.CopyFS(target, os.DirFS(src)); err != nil {
+				fmt.Fprintf(os.Stderr, "warn: failed to copy to %s: %v\n", target, err)
+				continue
+			}
+			if fallbackMode {
+				fmt.Printf("installed skill '%s' (embedded) to %s\n", defaultSkillName, target)
+			} else {
+				fmt.Printf("installed skill '%s' to %s\n", defaultSkillName, target)
+			}
+			return
+		}
+	}
+	die("could not install skill; tried: %s", strings.Join(skillLocations(), ", "))
 }
