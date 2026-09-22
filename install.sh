@@ -43,11 +43,12 @@ resolve_version() {
   # fetch latest release tag from GitHub API
   local latest
   if command_exists curl; then
+    # Prefer latest semver release
     latest=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep -oP '"tag_name":\s*"\K[^"]+' || true)
-  fi
-  if [ -z "${latest:-}" ]; then
-    # No semver releases yet — fall back to continuous prerelease
-    latest=$(curl -sL "https://api.github.com/repos/${REPO}/releases/tags/continuous" 2>/dev/null | grep -oP '"tag_name":\s*"\K[^"]+' || true)
+    # Fall back to continuous prerelease
+    if [ -z "${latest:-}" ]; then
+      latest=$(curl -sL "https://api.github.com/repos/${REPO}/releases/tags/continuous" 2>/dev/null | grep -oP '"tag_name":\s*"\K[^"]+' || true)
+    fi
   fi
   if [ -z "${latest:-}" ]; then
     # No releases at all — can't determine version
