@@ -568,13 +568,13 @@ func (s *selfUpdater) Run() error {
 		fmt.Printf("prebuilt: %v\n", err)
 	}
 
-	// Strategy 2: try `go install`
-	fmt.Println("trying go install ...")
-	if err := s.tryGoInstall(ex); err == nil {
-		fmt.Println("updated via go install")
+	// Strategy 2: try source build (can inject version via ldflags)
+	fmt.Println("trying source build ...")
+	if err := s.trySource(binDir); err == nil {
+		fmt.Println("updated via source build")
 		return nil
 	} else {
-		fmt.Printf("go install: %v\n", err)
+		fmt.Printf("source: %v\n", err)
 	}
 
 	// Strategy 3: installer script
@@ -586,13 +586,13 @@ func (s *selfUpdater) Run() error {
 		fmt.Printf("installer: %v\n", err)
 	}
 
-	// Strategy 4: source build
-	fmt.Println("trying source build ...")
-	if err := s.trySource(binDir); err == nil {
-		fmt.Println("updated via source build")
+	// Strategy 4: go install (last resort — version will be 'dev')
+	fmt.Println("trying go install ...")
+	if err := s.tryGoInstall(ex); err == nil {
+		fmt.Println("updated via go install")
 		return nil
 	} else {
-		fmt.Printf("source: %v\n", err)
+		fmt.Printf("go install: %v\n", err)
 	}
 
 	return fmt.Errorf("all update strategies failed")
@@ -705,6 +705,10 @@ func (s *selfUpdater) trySource(binDir string) error {
 	if err != nil {
 		return err
 	}
+	latestTag, err := s.fetchLatestTag()
+	if err != nil {
+		latestTag = ""
+	}
 	tmpDir, err := os.MkdirTemp("", "ws-update-*")
 	if err != nil {
 		return err
@@ -717,7 +721,11 @@ func (s *selfUpdater) trySource(binDir string) error {
 	if err := cmd.Run(); err != nil {
 		return err
 	}
-	build := exec.Command("go", "build", "-o", filepath.Join(binDir, s.binName), "./cmd/"+s.binName)
+	ldflags := "-s -w"
+	if latestTag != "" {
+		ldflags = ldflags + " -X main.version=" + latestTag
+	}
+	build := exec.Command("go", "build", "-ldflags", ldflags, "-o", filepath.Join(binDir, s.binName), "./cmd/"+s.binName)
 	build.Dir = src
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
@@ -725,7 +733,9 @@ func (s *selfUpdater) trySource(binDir string) error {
 }
 
 func (s *selfUpdater) fetchLatestTag() (string, error) {
-	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", s.repo)
+	// Use the tags API (newest first) — more reliable than releases/latest
+	// which returns by release creation date, not semver order.
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/tags", s.repo)
 	resp, err := http.Get(apiURL)
 	if err != nil {
 		return "", err
@@ -734,13 +744,16 @@ func (s *selfUpdater) fetchLatestTag() (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("GitHub API returned %d", resp.StatusCode)
 	}
-	var payload struct {
-		TagName string `json:"tag_name"`
+	var tags []struct {
+		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
 		return "", err
 	}
-	return payload.TagName, nil
+	if len(tags) == 0 {
+		return "", nil
+	}
+	return tags[0].Name, nil
 }
 
 func (s *selfUpdater) replaceInPlace(currentPath, newBin string) error {

@@ -198,23 +198,21 @@ main() {
     log "no prebuilt binary found, trying alternative methods ..."
   fi
 
-  # 2) Try go install (skip if version is a non-semver prerelease)
-  if command_exists go; then
-    if [ -n "${ver:-}" ] && echo "$ver" | grep -qE '^v[0-9]\.'; then
-      if install_go "$ver"; then
-        log "success (go install)"
-        return 0
-      fi
-      log "go install failed, falling back to source build ..."
-    else
-      log "go install: skipping non-semver version '$ver', falling back to source ..."
-    fi
-  fi
-
-  # 3) Try source build (needs git + go)
+  # 2) Try source build (needs git + go) — preferred over go install
+  #    because source build can inject the version string via ldflags,
+  #    whereas go install cannot.
   if command_exists git && command_exists go; then
     if install_source "$ver"; then
       log "success (built from source)"
+      return 0
+    fi
+    log "source build failed, trying go install ..."
+  fi
+
+  # 3) Try go install as last resort (version string will be 'dev')
+  if command_exists go; then
+    if install_go "$ver"; then
+      log "success (go install — version string may show 'dev')"
       return 0
     fi
   fi
