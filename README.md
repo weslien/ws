@@ -59,14 +59,35 @@ The script installs to `/usr/local/bin` if writable, otherwise `~/.local/bin`. M
 export PATH="$HOME/.local/bin:$PATH"  # if installed to ~/.local/bin
 ```
 
-#### Optional: manual install
+#### Optional: manual install with go-task
 
 ```bash
-# Clone and build locally
 git clone https://github.com/weslien/ws.git
 cd ws
-go build -o ws ./cmd/ws
-sudo mv ws /usr/local/bin/
+go install github.com/go-task/task/v3/cmd/task@latest
+task install   # builds with version injection and installs to ~/.local/bin
+```
+
+Or without go-task:
+
+```bash
+git clone https://github.com/weslien/ws.git
+cd ws
+go build -ldflags "-s -w -X main.version=v0.5.2" -o ws ./cmd/ws
+```
+
+### Development
+
+```bash
+git clone https://github.com/weslien/ws.git
+cd ws
+go install github.com/go-task/task/v3/cmd/task@latest
+
+task build          # build binary
+task test           # unit tests
+task e2e            # end-to-end lifecycle test (30 checks)
+task check          # lint + test + e2e
+task --list         # see all tasks
 ```
 
 ### Windows

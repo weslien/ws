@@ -37,6 +37,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
+      - name: Install go-task
+        run: go install github.com/go-task/task/v3/cmd/task@latest
+      - name: Test
+        run: ~/go/bin/task test
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}

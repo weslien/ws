@@ -1,0 +1,78 @@
+version: "3"
+
+vars:
+  VERSION: '{{.VERSION | default "dev"}}'
+  BINARY: ws
+  PKG: github.com/weslien/ws
+  LDFLAGS: -s -w -X main.version={{.VERSION}}
+
+tasks:
+  default:
+    desc: List all tasks
+    cmds:
+      - task --list
+
+  build:
+    desc: Build the ws binary
+    cmds:
+      - go build -ldflags "{{.LDFLAGS}}" -o {{.BINARY}} ./cmd/ws
+
+  dev:
+    desc: Build without ldflags (version=dev)
+    cmds:
+      - go build -o {{.BINARY}} ./cmd/ws
+
+  install:
+    desc: Build and install to ~/.local/bin
+    cmds:
+      - task build
+      - mkdir -p ~/.local/bin
+      - cp {{.BINARY}} ~/.local/bin/{{.BINARY}}
+
+  test:
+    desc: Run Go unit tests
+    cmds:
+      - go test ./...
+
+  e2e:
+    desc: Run end-to-end lifecycle test
+    deps: [build]
+    cmds:
+      - ./scripts/e2e-test.sh
+    env:
+      WS_BIN: ./ws
+
+  e2e-installed:
+    desc: Run e2e test against installed ws binary
+    cmds:
+      - scripts/e2e-test.sh
+    env:
+      WS_BIN: ws
+
+  lint:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  clean:
+    desc: Remove build artifacts and local ws state
+    cmds:
+      - rm -f {{.BINARY}}
+      - rm -rf ~/.ws
+
+  release:
+    desc: "Tag a release (usage: task release VERSION=v0.5.2)"
+    preconditions:
+      - sh: '[ -n "{{.VERSION}}" ]'
+        msg: "VERSION is required (e.g. task release VERSION=v0.5.2)"
+    cmds:
+      - task build
+      - git add -A
+      - 'git commit -m "release: {{.VERSION}}" || true'
+      - git tag -a {{.VERSION}} -m "{{.VERSION}}"
+      - git push origin main
+      - git push origin {{.VERSION}}
+
+  check:
+    desc: Run all checks (lint + test + e2e)
+    deps: [lint, test, e2e]

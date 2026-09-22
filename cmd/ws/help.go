@@ -385,7 +385,7 @@ Platform Differences
 
 func printHelp(topic string) {
 	if topic == "" || topic == "help" {
-		fmt.Println(usageText)
+		fmt.Print(usageText)
 		return
 	}
 	if text, ok := cmdHelps[topic]; ok {
@@ -399,7 +399,7 @@ func printHelp(topic string) {
 		fmt.Println(conceptsGuide)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown help topic: %q\n\n", topic)
-		fmt.Println(usageText)
+		fmt.Print(usageText)
 		os.Exit(1)
 	}
 }

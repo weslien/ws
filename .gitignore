@@ -14,3 +14,6 @@ vendor/
 .idea/
 .vscode/
 .DS_Store
+
+# Generated / dev-only
+CONTAINER-INTEGRATION.md
