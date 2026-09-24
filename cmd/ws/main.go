@@ -145,6 +145,14 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 	switch {
 	case strings.HasPrefix(source, "layer:"):
 		hash := strings.TrimPrefix(source, "layer:")
+		if hash == "" {
+			die("layer hash cannot be empty")
+		}
+		// Verify the layer exists
+		layerDir := filepath.Join(store.Root(), "layers", hash)
+		if _, err := os.Stat(layerDir); os.IsNotExist(err) {
+			die("layer %q not found", hash)
+		}
 		if log != nil {
 			log.Log("forking from layer %s...", hash)
 		}

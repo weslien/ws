@@ -110,6 +110,11 @@ func (b *CopyBackend) LayerHash(dir string) string {
 		if rel == ".git" || strings.HasPrefix(rel, ".git/") {
 			return nil
 		}
+		// Skip symlinks — they're metadata, not content
+		if info.Mode()&os.ModeSymlink != 0 {
+			files = append(files, rel+" -> "+info.Name())
+			return nil
+		}
 		files = append(files, rel)
 		return nil
 	})
@@ -151,6 +156,17 @@ func copyDir(src, dst string) error {
 			return nil
 		}
 		dstPath := filepath.Join(dst, rel)
+
+		// Handle symlinks: copy the link, not the target
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			os.MkdirAll(filepath.Dir(dstPath), 0755)
+			return os.Symlink(target, dstPath)
+		}
+
 		if info.IsDir() {
 			return os.MkdirAll(dstPath, info.Mode())
 		}
