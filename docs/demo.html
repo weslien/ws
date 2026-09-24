@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="ws Multi-Agent Demo — 7 agents, 3 waves, 9 layers, 1 merged binary. A Calculator API built by parallel AI agents using ws workspace graphs." />
+  <title>ws Multi-Agent Demo — Calculator API</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg:        #0a0e1a;
+      --surface:   #121829;
+      --fg:        #e8eaf0;
+      --muted:     #9aa3b8;
+      --border:    #2a3450;
+      --accent:    #ffb627;
+      --bg-elevated:  #1a2238;
+      --bg-inset:     #060912;
+      --text-muted:   #5c6577;
+      --green:        #5fe0a0;
+      --green-dim:    #3da06e;
+      --blue:         #5b9eff;
+      --blue-dim:     #3d72b8;
+      --magenta:      #ff5c8a;
+      --cyan:         #4dd2ff;
+      --amber-dim:    #cc8c1a;
+      --border-bright:#3d4f73;
+      --selection:    #1e3a5f;
+      --glow-amber:   0 0 12px rgba(255, 182, 39, 0.3), 0 0 24px rgba(255, 182, 39, 0.1);
+      --glow-green:   0 0 12px rgba(95, 224, 160, 0.3), 0 0 24px rgba(95, 224, 160, 0.1);
+      --inset-screen: inset 0 0 60px rgba(0, 0, 0, 0.6);
+      --accent-soft: color-mix(in oklch, var(--accent) 14%, transparent);
+      --fg-soft:     color-mix(in oklch, var(--fg) 6%, transparent);
+      --font-display: 'Press Start 2P', 'VT323', monospace;
+      --font-body:    'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+      --font-mono:    'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, monospace;
+      --fs-h1: clamp(26px, 4vw, 38px);
+      --fs-h2: clamp(18px, 3vw, 26px);
+      --fs-h3: 16px;
+      --fs-lead: 17px;
+      --fs-body: 16px;
+      --fs-meta: 12px;
+      --gap-xs: 4px; --gap-sm: 8px; --gap-md: 16px; --gap-lg: 24px;
+      --gap-xl: 32px; --gap-2xl: 48px; --gap-3xl: 64px; --gap-4xl: 96px;
+      --container: 920px;
+      --gutter: 24px;
+      --radius: 0px; --radius-lg: 0px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font-family: var(--font-body); font-size: var(--fs-body);
+      line-height: 1.7; text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+    ::selection { background: var(--selection); color: var(--fg); }
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; cursor: pointer; }
+    code { font-family: var(--font-mono); font-size: 0.85em; color: var(--accent); background: var(--bg-elevated); padding: 1px 5px; border-radius: 0; }
+    p { text-wrap: pretty; }
+    h1, h2, h3, h4 { text-wrap: balance; }
+
+    .container { max-width: var(--container); margin-inline: auto; padding-inline: var(--gutter); }
+    .section { padding-block: clamp(48px, 8vw, 64px); }
+    .section + .section { border-top: 1px solid var(--border); }
+    .stack { display: flex; flex-direction: column; }
+    .stack > * + * { margin-top: var(--gap-md); }
+    .row { display: flex; align-items: center; gap: var(--gap-md); }
+    .row-between { display: flex; align-items: center; justify-content: space-between; gap: var(--gap-md); }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--gap-lg); }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap-lg); }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap-md); }
+    .grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: var(--gap-xl); align-items: start; }
+    @media (max-width: 920px) {
+      .grid-2, .grid-3, .grid-4, .grid-2-1 { grid-template-columns: 1fr; }
+    }
+
+    .h1, h1 { font-family: var(--font-display); font-size: var(--fs-h1); line-height: 1.2; letter-spacing: 0.02em; font-weight: 400; margin: 0; }
+    .h2, h2 { font-family: var(--font-display); font-size: var(--fs-h2); line-height: 1.3; letter-spacing: 0.02em; font-weight: 400; margin: 0; }
+    .h3, h3 { font-family: var(--font-display); font-size: var(--fs-h3); line-height: 1.5; letter-spacing: 0.05em; font-weight: 400; margin: 0; }
+    .lead { font-family: var(--font-body); font-size: var(--fs-lead); line-height: 1.7; color: var(--muted); max-width: 52ch; margin: 0; }
+    .eyebrow { font-family: var(--font-display); font-size: 0.625rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin: 0 0 var(--gap-md); }
+    .meta { font-family: var(--font-mono); font-size: var(--fs-meta); color: var(--muted); letter-spacing: 0.05em; }
+    .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    .topnav { position: sticky; top: 0; z-index: 10; background: var(--bg); border-bottom: 1px solid var(--border); }
+    .topnav-inner { display: flex; align-items: center; justify-content: space-between; padding-block: 16px; }
+    .topnav .logo { font-family: var(--font-display); font-size: 1rem; font-weight: 400; letter-spacing: 0; }
+    .topnav nav { display: flex; gap: var(--gap-xl); }
+    .topnav nav a { font-family: var(--font-display); font-size: 0.625rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+    .topnav nav a:hover { color: var(--accent); }
+    @media (max-width: 640px) { .topnav nav { display: none; } }
+    .pagefoot { padding-block: var(--gap-xl); color: var(--muted); font-family: var(--font-mono); font-size: var(--fs-meta); border-top: 1px solid var(--border); }
+    .pagefoot .row-between { flex-wrap: wrap; gap: var(--gap-md); }
+
+    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 0; border: 1px solid transparent; font-family: var(--font-body); font-size: 15px; font-weight: 500; letter-spacing: 0; transition: transform 0.05s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease; }
+    .btn:active { transform: translateY(1px); }
+    .btn:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .btn-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); box-shadow: var(--glow-amber); }
+    .btn-primary:hover { background: var(--amber-dim); border-color: var(--amber-dim); }
+    .btn-secondary { background: transparent; color: var(--green); border-color: var(--green); }
+    .btn-secondary:hover { background: var(--bg-elevated); color: var(--green); border-color: var(--green); }
+    .btn-ghost { background: transparent; color: var(--muted); border-color: transparent; padding-inline: 8px; }
+    .btn-ghost:hover { color: var(--accent); }
+    .btn-arrow::after { content: ' \2192'; transition: transform 0.15s ease; }
+    .btn-arrow:hover::after { transform: translateX(2px); }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 0; padding: 24px; }
+    .card-flat { background: transparent; border: 0; padding: 0; }
+
+    .terminal-window { border: 1px solid var(--border); background: var(--bg-inset); box-shadow: var(--inset-screen); }
+    .terminal-header { background: var(--bg-elevated); color: var(--muted); padding: 8px 16px; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); }
+    .terminal-body { padding: 20px; font-family: var(--font-mono); font-size: 13px; line-height: 1.8; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto; }
+    .terminal-body .prompt { color: var(--green); }
+    .terminal-body .out { color: var(--muted); }
+    .terminal-body .active { color: var(--green); }
+    .terminal-body .amber-text { color: var(--accent); }
+    .terminal-body .blue-text { color: var(--blue); }
+    .terminal-body .magenta-text { color: var(--magenta); }
+    .terminal-body .cyan-text { color: var(--cyan); }
+
+    .code-block { background: var(--bg-inset); border: 1px solid var(--border); border-radius: 2px; padding: 16px; font-family: var(--font-mono); font-size: 13px; line-height: 1.8; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto; }
+    .code-block .prompt { color: var(--green); }
+
+    .hero { padding-block: clamp(64px, 10vw, 96px); }
+    .hero-center { text-align: center; max-width: 36ch; margin-inline: auto; }
+    .hero h1 { margin-bottom: var(--gap-md); }
+    .hero .lead { margin-bottom: var(--gap-lg); }
+    .hero-cta { display: inline-flex; gap: var(--gap-sm); flex-wrap: wrap; }
+    .hero-center .hero-cta { justify-content: center; }
+
+    .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap-md); margin-top: 40px; }
+    @media (max-width: 640px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+    .stat-cell { text-align: center; padding: 20px 12px; border: 1px solid var(--border); background: var(--surface); }
+    .stat-cell .stat-val { font-family: var(--font-display); font-size: 1.75rem; color: var(--accent); display: block; margin-bottom: 8px; }
+    .stat-cell .stat-lbl { font-family: var(--font-mono); font-size: 11px; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
+
+    .wave-grid { display: grid; gap: var(--gap-lg); }
+    .wave-card { background: var(--surface); border: 1px solid var(--border); padding: 0; }
+    .wave-card .wave-header { background: var(--bg-elevated); padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .wave-card .wave-header h3 { font-size: 13px; }
+    .wave-card .wave-header .wave-tag { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+    .wave-card .wave-body { padding: 20px; }
+
+    .agent-list { display: flex; flex-direction: column; gap: 2px; }
+    .agent-row { display: grid; grid-template-columns: 80px 1fr auto; gap: 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid color-mix(in oklch, var(--border) 50%, transparent); }
+    .agent-row:last-child { border-bottom: 0; }
+    .agent-row .agent-id { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+    .agent-row .agent-task { font-family: var(--font-body); font-size: 14px; color: var(--fg); }
+    .agent-row .agent-parent { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+
+    .ds-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .ds-table th, .ds-table td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+    .ds-table th { color: var(--muted); font-weight: 400; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+    .ds-table .pass { color: var(--green); font-family: var(--font-mono); }
+    .ds-table .endpoint { font-family: var(--font-mono); color: var(--cyan); }
+
+    .rule { border: 0; border-top: 1px solid var(--border); margin: 0; }
+
+    @media (max-width: 920px) {
+      section[data-od-id="how"] .container { grid-template-columns: 1fr !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topnav">
+    <div class="container topnav-inner">
+      <span class="logo">ws</span>
+      <nav>
+        <a href="#how">How it works</a>
+        <a href="#waves">Waves</a>
+        <a href="#graph">Graph</a>
+        <a href="#tests">Tests</a>
+        <a href="https://github.com/weslien/ws">GitHub</a>
+      </nav>
+      <a class="btn btn-secondary" href="#run">Run it</a>
+    </div>
+  </header>
+
+  <main id="content">
+
+    <!-- ── Section 1: Hero ─────────────────────────────────────────── -->
+    <section class="section hero">
+      <div class="container" style="text-align: center;">
+        <div style="max-width: 80ch; margin-inline: auto;">
+          <p class="eyebrow">MULTI-AGENT DEMO · CALCULATOR API</p>
+          <h1>7 agents. 3 waves.<br>1 merged binary.</h1>
+          <p class="lead" style="margin: 16px auto 32px;">Seven AI agents build a Go calculator API in parallel. Four implement independent endpoints; two branch from their parents to add validation and logging; one consolidates everything into a single compilable binary.</p>
+          <div class="hero-cta" style="justify-content: center;">
+            <a class="btn btn-primary" href="#run">Run the demo</a>
+            <a class="btn btn-ghost btn-arrow" href="https://github.com/weslien/ws/blob/main/scripts/demo.sh">View script</a>
+          </div>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-cell">
+            <span class="stat-val num">7</span>
+            <span class="stat-lbl">Agents</span>
+          </div>
+          <div class="stat-cell">
+            <span class="stat-val num">3</span>
+            <span class="stat-lbl">Waves</span>
+          </div>
+          <div class="stat-cell">
+            <span class="stat-val num">9</span>
+            <span class="stat-lbl">Layers</span>
+          </div>
+          <div class="stat-cell">
+            <span class="stat-val num">8/8</span>
+            <span class="stat-lbl">Tests</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Section 2: How it works (split) ──────────────────────────── -->
+    <section class="section" id="how">
+      <div class="container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center;">
+        <div>
+          <p class="eyebrow">HOW IT WORKS</p>
+          <h2>Parallel agents,<br>shared layers</h2>
+          <p class="lead" style="margin-top: 20px;">Wave 0 creates a base layer from a Go skeleton. Six agents each get a workspace branched from that layer. Four work in parallel on independent endpoints. Two branch from wave-1 agents — inheriting their uncommitted state — to add dependent features. The consolidator merges all layers into one binary.</p>
+          <div style="margin-top: 28px;">
+            <a class="btn btn-ghost btn-arrow" href="#waves">See the waves</a>
+          </div>
+        </div>
+        <div class="terminal-window">
+          <div class="terminal-header">ws — dependency graph</div>
+          <div class="terminal-body"><span class="prompt">$</span> ws graph
+<span class="out">layer:consolidated <span class="amber-text">[all 6 agents merged]</span>
+  ├─ layer:agent-6 <span class="amber-text">[/metrics endpoint]</span>
+  │    └─ layer:base <span class="out">[skeleton]</span>
+  ├─ layer:agent-5 <span class="amber-text">[structured logging]</span>
+  │    └─ layer:agent-2 <span class="amber-text">[multiply+divide]</span>
+  │         └─ layer:base <span class="out">[skeleton]</span>
+  ├─ layer:agent-4 <span class="amber-text">[/health endpoint]</span>
+  │    └─ layer:base <span class="out">[skeleton]</span>
+  ├─ layer:agent-3 <span class="amber-text">[input validation]</span>
+  │    └─ layer:agent-1 <span class="amber-text">[add+subtract]</span>
+  │         └─ layer:base <span class="out">[skeleton]</span>
+  └─ layer:agent-2 <span class="amber-text">[multiply+divide]</span>
+       └─ layer:base <span class="out">[skeleton]</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Section 3: Waves ────────────────────────────────────────── -->
+    <section class="section" id="waves">
+      <div class="container stack" style="gap: 48px;">
+        <div>
+          <p class="eyebrow">THE WAVES</p>
+          <h2>Three waves of work</h2>
+        </div>
+        <div class="wave-grid">
+
+          <!-- Wave 0 -->
+          <div class="wave-card">
+            <div class="wave-header">
+              <h3>Wave 0 — Setup</h3>
+              <span class="wave-tag">1 layer · 6 workspaces</span>
+            </div>
+            <div class="wave-body">
+              <p style="color: var(--muted); font-size: 14px; margin: 0 0 16px;">A base repo with four stub handlers gets committed. <code>ws keep</code> saves it as a layer. Six workspaces are branched from that layer — one per agent.</p>
+              <div class="terminal-window" style="margin-top: 16px;">
+                <div class="terminal-header">ws — setup</div>
+                <div class="terminal-body"><span class="prompt">$</span> ws get dir:/tmp/ws-demo-repo --name=base --json
+<span class="out">{"workspace":"base","formed_from":"5eb8d32459ce"}</span>
+<span class="prompt">$</span> ws keep base --message="base: calculator API skeleton" --json
+<span class="out">{"workspace":"base","layer":"e3b0c44298fc"}</span>
+<span class="prompt">$</span> ws drop base
+<span class="prompt">$</span> for i in 1 2 3 4 5 6; do
+<span class="prompt">></span>   ws get layer:e3b0c44298fc --name=agent-$i --json
+<span class="prompt">></span> done</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Wave 1 -->
+          <div class="wave-card">
+            <div class="wave-header">
+              <h3>Wave 1 — Parallel implementation</h3>
+              <span class="wave-tag">4 agents · 4 layers</span>
+            </div>
+            <div class="wave-body">
+              <p style="color: var(--muted); font-size: 14px; margin: 0 0 16px;">Four agents implement independent features in parallel. Each builds, then <code>ws keep</code> saves the result as a new layer.</p>
+              <div class="agent-list">
+                <div class="agent-row">
+                  <span class="agent-id">agent-1</span>
+                  <span class="agent-task">add + subtract handlers</span>
+                  <span class="agent-parent">from base</span>
+                </div>
+                <div class="agent-row">
+                  <span class="agent-id">agent-2</span>
+                  <span class="agent-task">multiply + divide handlers</span>
+                  <span class="agent-parent">from base</span>
+                </div>
+                <div class="agent-row">
+                  <span class="agent-id">agent-4</span>
+                  <span class="agent-task">/health endpoint</span>
+                  <span class="agent-parent">from base</span>
+                </div>
+                <div class="agent-row">
+                  <span class="agent-id">agent-6</span>
+                  <span class="agent-task">/metrics endpoint with request counting</span>
+                  <span class="agent-parent">from base</span>
+                </div>
+              </div>
+              <div class="terminal-window" style="margin-top: 16px;">
+                <div class="terminal-header">ws — wave 1</div>
+                <div class="terminal-body"><span class="prompt">$</span> ws run agent-1 -- go build -o /dev/null main.go
+<span class="prompt">$</span> ws keep agent-1 --message="agent-1: add+subtract" --json
+<span class="out">{"workspace":"agent-1","layer":"a1b3c2..."}</span>
+<span class="prompt">$</span> ws run agent-2 -- go build -o /dev/null main.go
+<span class="prompt">$</span> ws keep agent-2 --message="agent-2: multiply+divide" --json
+<span class="out">{"workspace":"agent-2","layer":"d4e5f6..."}</span>
+<span class="prompt">$</span> ws run agent-4 -- go build -o /dev/null main.go
+<span class="prompt">$</span> ws keep agent-4 --message="agent-4: /health endpoint" --json
+<span class="out">{"workspace":"agent-4","layer":"g7h8i9..."}</span>
+<span class="prompt">$</span> ws run agent-6 -- go build -o /dev/null main.go
+<span class="prompt">$</span> ws keep agent-6 --message="agent-6: /metrics endpoint" --json
+<span class="out">{"workspace":"agent-6","layer":"j0k1l2..."}</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Wave 2 -->
+          <div class="wave-card">
+            <div class="wave-header">
+              <h3>Wave 2 — Dependent branches</h3>
+              <span class="wave-tag">2 agents · 2 layers</span>
+            </div>
+            <div class="wave-body">
+              <p style="color: var(--muted); font-size: 14px; margin: 0 0 16px;">Two agents branch from wave-1 workspaces — inheriting their uncommitted state. Agent-3 adds validation on top of agent-1's handlers. Agent-5 adds logging on top of agent-2's.</p>
+              <div class="agent-list">
+                <div class="agent-row">
+                  <span class="agent-id">agent-3</span>
+                  <span class="agent-task">input validation (missing params, type checks)</span>
+                  <span class="agent-parent">from ws:agent-1</span>
+                </div>
+                <div class="agent-row">
+                  <span class="agent-id">agent-5</span>
+                  <span class="agent-task">structured logging middleware</span>
+                  <span class="agent-parent">from ws:agent-2</span>
+                </div>
+              </div>
+              <div class="terminal-window" style="margin-top: 16px;">
+                <div class="terminal-header">ws — wave 2</div>
+                <div class="terminal-body"><span class="prompt">$</span> ws get ws:agent-1 --name=agent-3 --force
+<span class="out">workspace agent-3 formed from a1b3c2... (uncommitted)</span>
+<span class="prompt">$</span> ws get ws:agent-2 --name=agent-5 --force
+<span class="out">workspace agent-5 formed from d4e5f6... (uncommitted)</span>
+<span class="prompt">$</span> ws run agent-3 -- go build -o /dev/null main.go
+<span class="prompt">$</span> ws keep agent-3 --message="agent-3: input validation"
+<span class="out">kept layer m3n4o5...</span>
+<span class="prompt">$</span> ws run agent-5 -- go build -o /dev/null main.go
+<span class="prompt">$</span> ws keep agent-5 --message="agent-5: structured logging"
+<span class="out">kept layer p6q7r8...</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Wave 3 -->
+          <div class="wave-card">
+            <div class="wave-header">
+              <h3>Wave 3 — Consolidation</h3>
+              <span class="wave-tag">1 agent · 1 layer</span>
+            </div>
+            <div class="wave-body">
+              <p style="color: var(--muted); font-size: 14px; margin: 0 0 16px;">The consolidator branches from agent-3 (which already has validation + add/subtract), then merges all six agents' code into one file. Builds and saves as the final layer.</p>
+              <div class="terminal-window" style="margin-top: 16px;">
+                <div class="terminal-header">ws — wave 3</div>
+                <div class="terminal-body"><span class="prompt">$</span> ws get layer:$LAYER3 --name=final --force
+<span class="prompt">$</span> <span class="out"># merge using layer copy from each agent</span>
+<span class="prompt">$</span> ws layer copy $LAYER_2 main.go /tmp/agent-2.go
+<span class="prompt">$</span> ws layer copy $LAYER_4 main.go /tmp/agent-4.go
+<span class="prompt">$</span> ws layer copy $LAYER_5 main.go /tmp/agent-5.go
+<span class="prompt">$</span> ws layer copy $LAYER_6 main.go /tmp/agent-6.go
+<span class="prompt">$</span> <span class="out"># manually merge features into final workspace</span>
+<span class="prompt">$</span> ws run final -- go build -o /dev/null main.go
+<span class="prompt">$</span> ws keep final --message="consolidated: all 6 agents merged" --json
+<span class="out">{"workspace":"final","layer":"787bb50a1ef3"}</span>
+<span class="prompt">$</span> ws export final /project/dist
+<span class="out">exported workspace final to /project/dist</span></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Section 4: Smoke tests ───────────────────────────────────── -->
+    <section class="section" id="tests">
+      <div class="container">
+        <div style="max-width: 36ch; margin-bottom: 32px;">
+          <p class="eyebrow">SMOKE TESTS</p>
+          <h2>8 endpoints, 8 passes</h2>
+        </div>
+        <p style="color: var(--muted); font-size: 14px; max-width: 60ch; margin: 0 0 32px;">After consolidation, the merged binary is built and tested against every endpoint. All eight pass — including error paths for division by zero, missing parameters, and invalid integers.</p>
+        <table class="ds-table">
+          <thead>
+            <tr>
+              <th>Endpoint</th>
+              <th>Request</th>
+              <th>Expected</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="endpoint">/add</td>
+              <td class="meta">?a=5&amp;b=3</td>
+              <td class="meta">{"result":8}</td>
+              <td class="pass">✓ pass</td>
+            </tr>
+            <tr>
+              <td class="endpoint">/subtract</td>
+              <td class="meta">?a=10&amp;b=4</td>
+              <td class="meta">{"result":6}</td>
+              <td class="pass">✓ pass</td>
+            </tr>
+            <tr>
+              <td class="endpoint">/multiply</td>
+              <td class="meta">?a=6&amp;b=7</td>
+              <td class="meta">{"result":42}</td>
+              <td class="pass">✓ pass</td>
+            </tr>
+            <tr>
+              <td class="endpoint">/divide</td>
+              <td class="meta">?a=20&amp;b=4</td>
+              <td class="meta">{"result":5}</td>
+              <td class="pass">✓ pass</td>
+            </tr>
+            <tr>
+              <td class="endpoint">/divide</td>
+              <td class="meta">?a=20&amp;b=0</td>
+              <td class="meta">division by zero</td>
+              <td class="pass">✓ pass</td>
+            </tr>
+            <tr>
+              <td class="endpoint">/add</td>
+              <td class="meta">(no params)</td>
+              <td class="meta">missing parameter</td>
+              <td class="pass">✓ pass</td>
+            </tr>
+            <tr>
+              <td class="endpoint">/add</td>
+              <td class="meta">?a=foo&amp;b=bar</td>
+              <td class="meta">invalid integer</td>
+              <td class="pass">✓ pass</td>
+            </tr>
+            <tr>
+              <td class="endpoint">/health</td>
+              <td class="meta">—</td>
+              <td class="meta">{"status":"ok"}</td>
+              <td class="pass">✓ pass</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── Section 5: Run it ────────────────────────────────────────── -->
+    <section class="section" id="run" style="text-align: center;">
+      <div class="container" style="max-width: 600px;">
+        <h2>Run it</h2>
+        <p class="lead" style="margin: 16px auto 32px;">Requires ws CLI and Go 1.23+. The script creates the base repo, runs all three waves, and verifies the merged binary.</p>
+        <div class="code-block" style="margin-top: 32px; text-align: left; max-width: 480px; margin-inline: auto;">
+<span class="prompt">$</span> git clone https://github.com/weslien/ws.git
+<span class="prompt">$</span> cd ws &amp;&amp; bash scripts/demo.sh</div>
+        <p style="margin-top: 24px;">
+          <a class="btn btn-primary" href="https://github.com/weslien/ws/blob/main/scripts/demo.sh">View script on GitHub</a>
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="pagefoot">
+    <div class="container row-between">
+      <span>© ws · 2026 · MIT License</span>
+      <span class="meta">github.com/weslien/ws</span>
+    </div>
+  </footer>
+</body>
+</html>
