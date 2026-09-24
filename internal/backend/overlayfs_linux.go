@@ -145,11 +145,20 @@ func (b *OverlayfsBackend) Destroy(name string, logger OperationLogger) error {
 }
 
 func (b *OverlayfsBackend) Commit(name string, logger OperationLogger) (string, error) {
-	upper := filepath.Join(b.uppersDir(), name)
-	hash := b.LayerHash(upper)
+	// Hash the FULL merged workspace state (mount point), not just the upper dir.
+	// This ensures that keep on an unchanged workspace produces the same hash
+	// as the base layer, and that the layer is always usable for forking.
+	mountPoint := filepath.Join(b.workspacesDir(), name)
+	hash := b.LayerHash(mountPoint)
 	layerDir := filepath.Join(b.layersDir(), hash)
 	if _, err := os.Stat(layerDir); os.IsNotExist(err) {
-		if err := copyDirFromUpper(upper, layerDir); err != nil {
+		// Materialize the full merged view into the layer directory.
+		// We use tar to copy the mount point (which resolves the overlay)
+		// rather than the upper dir alone.
+		if err := os.MkdirAll(layerDir, 0755); err != nil {
+			return "", err
+		}
+		if err := copyDir(mountPoint, layerDir); err != nil {
 			return "", err
 		}
 	}
