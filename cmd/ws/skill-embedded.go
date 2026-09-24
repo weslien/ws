@@ -521,6 +521,10 @@ ws layer gc
 11. **USE ` + "`" + `--force` + "`" + ` when re-branching.** ` + "`" + `ws get ws:agent-1 --name=agent-5 --force` + "`" + ` replaces existing workspaces. Without ` + "`" + `--force` + "`" + `, the command fails if the workspace already exists.
 12. **KEEP unchanged workspaces returns the same hash.** Content-addressed dedup — keeping a workspace with no changes returns the base layer hash. This is correct, not a bug.
 13. **USE ` + "`" + `ws run -- sh -c '...'` + "`" + ` for complex commands.** Pipes, redirects, and compound commands work inside ` + "`" + `sh -c` + "`" + `.
+14. **KEEP dedups identical content.** Two workspaces with identical files produce the same layer hash. This is correct content-addressed behavior — don't assume hashes are unique per workspace.
+15. **USE ` + "`" + `keep --json` + "`" + ` to extract layer hashes.** Don't search ` + "`" + `layer ls` + "`" + ` by message — messages can collide and unchanged workspaces dedup to the base layer (no new layer with your message). Parse the ` + "`" + `--json` + "`" + ` output directly: ` + "`" + `ws keep ws --json | jq -r .layer` + "`" + `.
+16. **SYMLINKS are preserved** through keep → fork cycles. ` + "`" + `ws` + "`" + ` stores them as symlinks, not file copies.
+17. **FILE DELETIONS work correctly.** ` + "`" + `rm` + "`" + ` in a workspace creates an overlayfs whiteout. The deleted file is absent from the kept layer and any forks from it.
 
 ## Proven Patterns (from hands-on testing)
 
@@ -569,6 +573,47 @@ ws get layer:$STEP1_HASH --name=task-recovered --force
 ws status        # table: WORKSPACE, LAYER, DIRTY, MESSAGE, CREATED
 ws status --json  # machine-readable for coordination
 ws graph          # topological: base → children, sorted
+` + "`" + `` + "`" + `` + "`" + `
+
+### Diamond Merge (parallel branches converging)
+
+` + "`" + `` + "`" + `` + "`" + `bash
+# Base
+ws get base:REPO --name=base
+ws keep base --json   # → {"layer":"<BASE_HASH>"}
+
+# Two independent branches
+ws get layer:$BASE_HASH --name=branch-a
+# ... modify ...
+ws keep branch-a --json  # → {"layer":"<A_HASH>"}
+
+ws get layer:$BASE_HASH --name=branch-b
+# ... modify ...
+ws keep branch-b --json  # → {"layer":"<B_HASH>"}
+
+# Merge: fork from A, pull specific files from B
+ws get layer:$A_HASH --name=merged
+ws layer copy $B_HASH src/file.go $(ws path merged)/src/file.go
+ws keep merged --message="merged A+B"
+` + "`" + `` + "`" + `` + "`" + `
+
+### Parallel Hypotheses (bug hunt pattern)
+
+` + "`" + `` + "`" + `` + "`" + `bash
+# Seed
+ws get base:REPO --name=seed
+ws keep seed --json  # → {"layer":"<SEED_HASH>"}
+
+# N agents test different hypotheses in parallel
+for i in $(seq 1 N); do
+  ws get layer:$SEED_HASH --name=hypothesis-$i
+  # ... each agent tries a different fix ...
+  ws keep hypothesis-$i --json  # → {"layer":"<H${i}_HASH>"}
+done
+
+# Consolidator evaluates and picks the winner
+ws get layer:$WINNING_HASH --name=fix --force
+ws keep fix --message="bug fix: hypothesis $WINNER was correct"
 ` + "`" + `` + "`" + `` + "`" + `
 
 ## Command Reference
