@@ -460,13 +460,26 @@ COMMANDS
   run    <ws> -- <cmd> [args...]  Execute a command inside a workspace
   diff   <ws> [target]           Diff workspace vs base, vs ws, or vs layer
   keep   <ws> [--message=...]    Promote workspace changes to a new layer
-  drop   <ws>                    Destroy workspace (changes lost unless kept)
+  drop   <ws> [<ws> ...]          Destroy workspace(s) — multiple at once
   graph  [ws]                    Print layer/workspace dependency graph
-  status                          Show all workspaces with dirty/clean state
-  layer   <ls|show|gc>           Manage the immutable layer store
+  status [--json]                Show all workspaces with dirty/clean state
+  path   <ws>                    Print filesystem path to a workspace
+  export <ws> <dest>             Copy workspace contents to an external directory
+  layer   <ls|show|diff|cat|path|files|copy|gc>  Manage the immutable layer store
   skill                           Install the ws-workspace-graph agent skill
   update                          Update ws to the latest release
   help    [topic]                 Print help for a command or topic
+
+SOURCE TYPES (for 'get')
+  layer:<hash>                    Fork from an immutable layer
+  ws:<name>                       Branch from another workspace
+  base:<repo>[#<ref>]             Clone a git repo and create workspace
+  dir:<path>                      Create workspace from a local directory
+
+FLAGS
+  --json                          Machine-readable JSON output (get, keep, status, layer ls)
+  --force                         Replace existing workspace
+  --message=...                   Commit message for keep
 
 QUICK START
   ws get base:/path/to/repo --name=mytask
@@ -479,10 +492,12 @@ HELP TOPICS
   ws help run        Detailed help for 'run'
   ws help layer      Detailed help for 'layer'
   ws help status     Detailed help for 'status'
+  ws help path       Detailed help for 'path'
+  ws help export     Detailed help for 'export'
   ws help update     Detailed help for 'update'
   ws help skill      Detailed help for 'skill'
   ws help platform   Backends, overlayfs, and macOS container setup
-  ws help agent      Agent workflows and best practices
+  ws help agent      Agent workflows and best practices (10 scenarios)
   ws help concepts   Key concepts and terminology
 
 For full documentation: https://github.com/weslien/ws

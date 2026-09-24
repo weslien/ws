@@ -78,6 +78,10 @@ func main() {
 		} else {
 			printHelp("")
 		}
+	case "path":
+		cmdPath(args, store)
+	case "export":
+		cmdExport(args, be, store, logger)
 	case "skill":
 		cmdSkill()
 	case "update":
@@ -111,12 +115,16 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 	source := args[1]
 	var name string
 	force := false
+	jsonOut := false
 	for _, a := range args[2:] {
 		if strings.HasPrefix(a, "--name=") {
 			name = strings.TrimPrefix(a, "--name=")
 		}
 		if a == "--force" || a == "-f" {
 			force = true
+		}
+		if a == "--json" {
+			jsonOut = true
 		}
 	}
 	if name == "" {
@@ -194,6 +202,45 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 		}
 		formedFrom = hash
 
+	case strings.HasPrefix(source, "dir:"):
+		dirPath := strings.TrimPrefix(source, "dir:")
+		if _, err := os.Stat(dirPath); err != nil {
+			die("directory %q not accessible: %v", dirPath, err)
+		}
+		hash := be.LayerHash(dirPath)
+		layers := store.ReadLayers()
+		if _, exists := layers[hash]; !exists {
+			layerDir := filepath.Join(store.Root(), "layers", hash)
+			if err := os.MkdirAll(layerDir, 0755); err != nil {
+				die("create layer dir: %v", err)
+			}
+			// Copy directory contents into the layer
+			cmd := exec.Command("tar", "-C", dirPath, "-cf", "-", ".")
+			extract := exec.Command("tar", "-C", layerDir, "-xf", "-")
+			pipe, err := cmd.StdoutPipe()
+			if err != nil {
+				die("pipe: %v", err)
+			}
+			extract.Stdin = pipe
+			if err := cmd.Start(); err != nil {
+				die("tar source: %v", err)
+			}
+			if err := extract.Run(); err != nil {
+				die("tar extract: %v", err)
+			}
+			cmd.Wait()
+			log.Log("created layer %s", hash)
+			layers[hash] = storage.LayerMeta{
+				Hash:    hash,
+				Message: fmt.Sprintf("dir:%s", dirPath),
+			}
+			store.WriteLayers(layers)
+		}
+		if err := be.Fork(hash, name, log); err != nil {
+			die("fork from directory layer: %v", err)
+		}
+		formedFrom = hash
+
 	default:
 		die("unknown source type: %s", source)
 	}
@@ -206,7 +253,16 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 		CreatedAt:  time.Now().Format(time.RFC3339),
 	}
 	store.WriteWorkspaces(workspaces)
-	fmt.Printf("workspace %s formed from %s\n", name, formedFrom)
+	if jsonOut {
+		type getResult struct {
+			Workspace  string `json:"workspace"`
+			FormedFrom string `json:"formed_from"`
+			Layer      string `json:"layer"`
+		}
+		json.NewEncoder(os.Stdout).Encode(getResult{name, formedFrom, formedFrom})
+	} else {
+		fmt.Printf("workspace %s formed from %s\n", name, formedFrom)
+	}
 }
 
 func cmdRun(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
@@ -276,14 +332,18 @@ func cmdDiff(args []string, be backend.Backender, store *storage.Store, log back
 
 func cmdKeep(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
 	if len(args) < 2 || containsHelp(args) {
-			printHelp("keep")
+		printHelp("keep")
 		os.Exit(1)
 	}
 	name := args[1]
 	var msg string
+	jsonOut := false
 	for _, a := range args[2:] {
 		if strings.HasPrefix(a, "--message=") {
 			msg = strings.TrimPrefix(a, "--message=")
+		}
+		if a == "--json" {
+			jsonOut = true
 		}
 	}
 
@@ -320,25 +380,42 @@ func cmdKeep(args []string, be backend.Backender, store *storage.Store, log back
 	w.FormedFrom = hash
 	workspaces[name] = w
 	store.WriteWorkspaces(workspaces)
-	fmt.Printf("kept layer %s\n", hash)
+	if jsonOut {
+		type keepResult struct {
+			Workspace string `json:"workspace"`
+			Layer     string `json:"layer"`
+		}
+		json.NewEncoder(os.Stdout).Encode(keepResult{name, hash})
+	} else {
+		fmt.Printf("kept layer %s\n", hash)
+	}
 }
 
 func cmdDrop(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
 	if len(args) < 2 || containsHelp(args) {
-			printHelp("drop")
+		printHelp("drop")
 		os.Exit(1)
 	}
-	name := args[1]
 	workspaces := store.ReadWorkspaces()
-	if _, ok := workspaces[name]; !ok {
-		die("workspace %q not found", name)
+	dropped := 0
+	for _, name := range args[1:] {
+		if _, ok := workspaces[name]; !ok {
+			log.Error("workspace %q not found", name)
+			continue
+		}
+		if err := be.Destroy(name, log); err != nil {
+			log.Error("destroy %s: %v", name, err)
+			continue
+		}
+		delete(workspaces, name)
+		dropped++
 	}
-	if err := be.Destroy(name, log); err != nil {
-		die("destroy: %v", err)
-	}
-	delete(workspaces, name)
 	store.WriteWorkspaces(workspaces)
-	fmt.Printf("dropped workspace %s\n", name)
+	if dropped == 1 {
+		fmt.Printf("dropped workspace %s\n", args[1])
+	} else {
+		fmt.Printf("dropped %d workspaces\n", dropped)
+	}
 }
 
 func cmdGraph(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
@@ -393,10 +470,16 @@ func cmdStatus(args []string, be backend.Backender, store *storage.Store, log ba
 		printHelp("status")
 		return
 	}
+	jsonOut := false
+	for _, a := range args[1:] {
+		if a == "--json" {
+			jsonOut = true
+		}
+	}
 	workspaces := store.ReadWorkspaces()
 	layers := store.ReadLayers()
 
-	if len(workspaces) == 0 {
+	if len(workspaces) == 0 && !jsonOut {
 		fmt.Println("No active workspaces.")
 		return
 	}
@@ -408,24 +491,24 @@ func cmdStatus(args []string, be backend.Backender, store *storage.Store, log ba
 	}
 	sort.Strings(names)
 
-	// Table header
-	fmt.Printf("%-20s %-20s %-8s %-20s %s\n", "WORKSPACE", "LAYER", "DIRTY", "MESSAGE", "CREATED")
-	fmt.Printf("%-20s %-20s %-8s %-20s %s\n", strings.Repeat("-", 20), strings.Repeat("-", 20), strings.Repeat("-", 8), strings.Repeat("-", 20), strings.Repeat("-", 20))
+	type wsStatus struct {
+		Workspace string `json:"workspace"`
+		Layer     string `json:"layer"`
+		Dirty     string `json:"dirty"`
+		Message   string `json:"message"`
+		Created   string `json:"created"`
+	}
+	var statuses []wsStatus
 
 	for _, name := range names {
 		w := workspaces[name]
 		layerHash := w.FormedFrom
 
-		// Get the layer's message
 		msg := ""
 		if l, ok := layers[layerHash]; ok {
 			msg = l.Message
 		}
-		if len(msg) > 20 {
-			msg = msg[:17] + "..."
-		}
 
-		// Check if workspace is dirty (hash differs from layer)
 		dirty := "?"
 		wsHash := be.LayerHash(filepath.Join(store.Root(), "workspaces", name))
 		if wsHash == layerHash {
@@ -435,26 +518,71 @@ func cmdStatus(args []string, be backend.Backender, store *storage.Store, log ba
 		}
 
 		created := w.CreatedAt
-		if len(created) > 20 {
-			created = created[:20]
-		}
 
-		fmt.Printf("%-20s %-20s %-8s %-20s %s\n", name, layerHash[:12], dirty, msg, created)
+		statuses = append(statuses, wsStatus{name, layerHash, dirty, msg, created})
 	}
 
-	// Summary line
+	if jsonOut {
+		type statusResult struct {
+			Workspaces []wsStatus `json:"workspaces"`
+			Layers     int        `json:"layers"`
+		}
+		json.NewEncoder(os.Stdout).Encode(statusResult{statuses, len(layers)})
+		return
+	}
+
+	// Table header
+	fmt.Printf("%-20s %-20s %-8s %-20s %s\n", "WORKSPACE", "LAYER", "DIRTY", "MESSAGE", "CREATED")
+	fmt.Printf("%-20s %-20s %-8s %-20s %s\n", strings.Repeat("-", 20), strings.Repeat("-", 20), strings.Repeat("-", 8), strings.Repeat("-", 20), strings.Repeat("-", 20))
+
+	for _, s := range statuses {
+		layerShort := s.Layer
+		if len(layerShort) > 12 {
+			layerShort = layerShort[:12]
+		}
+		msgShort := s.Message
+		if len(msgShort) > 20 {
+			msgShort = msgShort[:17] + "..."
+		}
+		createdShort := s.Created
+		if len(createdShort) > 20 {
+			createdShort = createdShort[:20]
+		}
+		fmt.Printf("%-20s %-20s %-8s %-20s %s\n", s.Workspace, layerShort, s.Dirty, msgShort, createdShort)
+	}
+
 	fmt.Printf("\n%d workspaces, %d layers\n", len(workspaces), len(layers))
 }
 
 func cmdLayer(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
 	if len(args) < 2 || containsHelp(args) {
-			printHelp("layer")
+		printHelp("layer")
 		os.Exit(1)
 	}
 	sub := args[1]
 	switch sub {
 	case "ls":
+		jsonOut := false
+		for _, a := range args[2:] {
+			if a == "--json" {
+				jsonOut = true
+			}
+		}
 		layers := store.ReadLayers()
+		if jsonOut {
+			type layerEntry struct {
+				Hash      string `json:"hash"`
+				Parent    string `json:"parent,omitempty"`
+				Message   string `json:"message,omitempty"`
+				CreatedAt string `json:"created_at"`
+			}
+			var entries []layerEntry
+			for _, l := range layers {
+				entries = append(entries, layerEntry{l.Hash, l.Parent, l.Message, l.CreatedAt})
+			}
+			json.NewEncoder(os.Stdout).Encode(entries)
+			return
+		}
 		for hash, l := range layers {
 			fmt.Printf("%s  %s  %s\n", hash, l.CreatedAt, l.Message)
 		}
@@ -574,9 +702,78 @@ func cmdLayer(args []string, be backend.Backender, store *storage.Store, log bac
 			fmt.Println(rel)
 			return nil
 		})
+	case "copy":
+		if len(args) < 5 {
+			die("usage: ws layer copy <hash> <file> <destination>")
+		}
+		hash := strings.TrimPrefix(args[2], "layer:")
+		relPath := args[3]
+		dest := args[4]
+		layers := store.ReadLayers()
+		if _, ok := layers[hash]; !ok {
+			die("layer %q not found", hash)
+		}
+		srcPath := filepath.Join(store.Root(), "layers", hash, relPath)
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			die("read from layer: %v", err)
+		}
+		if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+			die("create dest dir: %v", err)
+		}
+		if err := os.WriteFile(dest, data, 0644); err != nil {
+			die("write to dest: %v", err)
+		}
+		fmt.Printf("copied %s from layer:%s to %s\n", relPath, hash, dest)
 	default:
 		die("unknown layer subcommand: %s", sub)
 	}
+}
+
+func cmdPath(args []string, store *storage.Store) {
+	if len(args) < 2 || containsHelp(args) {
+		printHelp("path")
+		os.Exit(1)
+	}
+	name := args[1]
+	workspaces := store.ReadWorkspaces()
+	if _, ok := workspaces[name]; !ok {
+		die("workspace %q not found", name)
+	}
+	fmt.Println(filepath.Join(store.Root(), "workspaces", name))
+}
+
+func cmdExport(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
+	if len(args) < 3 || containsHelp(args) {
+		printHelp("export")
+		os.Exit(1)
+	}
+	name := args[1]
+	dest := args[2]
+	workspaces := store.ReadWorkspaces()
+	if _, ok := workspaces[name]; !ok {
+		die("workspace %q not found", name)
+	}
+	_ = be.Mount(name, workspaces[name].FormedFrom, log)
+	wsDir := filepath.Join(store.Root(), "workspaces", name)
+	if err := os.MkdirAll(dest, 0755); err != nil {
+		die("create dest: %v", err)
+	}
+	cmd := exec.Command("tar", "-C", wsDir, "-cf", "-", ".")
+	extract := exec.Command("tar", "-C", dest, "-xf", "-")
+	pipe, err := cmd.StdoutPipe()
+	if err != nil {
+		die("pipe: %v", err)
+	}
+	extract.Stdin = pipe
+	if err := cmd.Start(); err != nil {
+		die("tar source: %v", err)
+	}
+	if err := extract.Run(); err != nil {
+		die("tar extract: %v", err)
+	}
+	cmd.Wait()
+	fmt.Printf("exported workspace %s to %s\n", name, dest)
 }
 
 // skillLocations returns the directories where Hermes skill stores are expected.

@@ -99,6 +99,45 @@ section "Cleanup"
 section "Skill"
 "$WS_BIN" skill && ok "skill install" || fail "skill install"
 
+section "New features (v0.6.0)"
+
+# dir: source (no git repo needed)
+rm -rf /tmp/ws-dir-test-$$
+mkdir -p /tmp/ws-dir-test-$$
+echo '{"name":"dir-test"}' > /tmp/ws-dir-test-$$/package.json
+"$WS_BIN" get dir:/tmp/ws-dir-test-$$ --name=dir-test && ok "get dir:" || fail "get dir:"
+rm -rf /tmp/ws-dir-test-$$
+
+# ws path
+"$WS_BIN" path dir-test && ok "ws path" || fail "ws path"
+
+# --json on keep
+"$WS_BIN" keep dir-test --message="json test" --json | grep -q '"layer"' && ok "keep --json" || fail "keep --json"
+
+# --json on status
+"$WS_BIN" status --json | grep -q '"workspaces"' && ok "status --json" || fail "status --json"
+
+# --json on layer ls
+"$WS_BIN" layer ls --json | grep -q '"hash"' && ok "layer ls --json" || fail "layer ls --json"
+
+# ws layer copy — use the base layer (which has the actual file)
+BASE_LAYER=$("$WS_BIN" layer ls --json | python3 -c "import json,sys; d=json.load(sys.stdin); print([l['hash'] for l in d if 'dir:' in l.get('message','')][0])")
+"$WS_BIN" layer copy "$BASE_LAYER" package.json /tmp/ws-layer-copy-test.json && ok "layer copy" || fail "layer copy"
+rm -f /tmp/ws-layer-copy-test.json
+
+# ws export
+"$WS_BIN" export dir-test /tmp/ws-export-test && ok "export" || fail "export"
+rm -rf /tmp/ws-export-test
+
+# ws drop multiple
+"$WS_BIN" get layer:"$BASE_LAYER" --name=multi-1
+"$WS_BIN" get layer:"$BASE_LAYER" --name=multi-2
+"$WS_BIN" drop multi-1 multi-2 | grep -q "2 workspaces" && ok "drop multiple" || fail "drop multiple"
+
+# cleanup dir-test
+"$WS_BIN" drop dir-test 2>/dev/null || true
+"$WS_BIN" layer gc
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  PASS: $PASS  FAIL: $FAIL"
