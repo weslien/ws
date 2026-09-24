@@ -518,6 +518,58 @@ ws layer gc
 8. **USE ` + "`" + `ws path <workspace>` + "`" + `** to get the filesystem path. Don't hardcode paths — workspace locations vary by platform and install.
 9. **USE ` + "`" + `ws get dir:<path>` + "`" + `** for local directories. Don't ` + "`" + `git init` + "`" + ` throwaway repos just to get a workspace.
 10. **CLEAN UP after consolidation:** ` + "`" + `ws drop` + "`" + ` all agent workspaces, then ` + "`" + `ws layer gc` + "`" + `.
+11. **USE ` + "`" + `--force` + "`" + ` when re-branching.** ` + "`" + `ws get ws:agent-1 --name=agent-5 --force` + "`" + ` replaces existing workspaces. Without ` + "`" + `--force` + "`" + `, the command fails if the workspace already exists.
+12. **KEEP unchanged workspaces returns the same hash.** Content-addressed dedup — keeping a workspace with no changes returns the base layer hash. This is correct, not a bug.
+13. **USE ` + "`" + `ws run -- sh -c '...'` + "`" + ` for complex commands.** Pipes, redirects, and compound commands work inside ` + "`" + `sh -c` + "`" + `.
+
+## Proven Patterns (from hands-on testing)
+
+### Seed-Branch-Consolidate (the core multi-agent workflow)
+
+` + "`" + `` + "`" + `` + "`" + `bash
+# 1. Create seed from repo (one clone)
+ws get base:https://github.com/you/repo --name=seed
+ws keep seed --message="seed"
+
+# 2. Branch N agents from seed (O(1) forks, no additional clones)
+SEED=$(ws layer ls --json | jq -r '.[] | select(.message | startswith("base:")) | .hash' | head -1)
+for i in $(seq 1 N); do
+  ws get layer:$SEED --name=agent-$i --json
+done
+
+# 3. Agents work independently, keep their layers
+ws keep agent-1 --message="task 1" --json  # → {"workspace":"agent-1","layer":"a3f4d..."}
+
+# 4. Consolidator: fork from one agent, copy files from others
+ws get layer:$BEST_LAYER --name=final --force
+FINAL=$(ws path final)
+ws layer copy $OTHER_LAYER src/file.go $FINAL/src/file.go
+ws keep final --message="consolidated" --json
+
+# 5. Export to git, cleanup
+ws export final /project/dist
+ws drop seed agent-1 ... agent-N final
+ws layer gc
+` + "`" + `` + "`" + `` + "`" + `
+
+### Checkpoint Recovery (safe rollback)
+
+` + "`" + `` + "`" + `` + "`" + `bash
+ws get base:REPO --name=task
+# ... work ...
+ws keep task --message="step 1: models" --json  # → layer hash saved
+# ... more work (breaks something) ...
+# Roll back:
+ws get layer:$STEP1_HASH --name=task-recovered --force
+` + "`" + `` + "`" + `` + "`" + `
+
+### Cross-Agent Visibility (what's everyone doing?)
+
+` + "`" + `` + "`" + `` + "`" + `bash
+ws status        # table: WORKSPACE, LAYER, DIRTY, MESSAGE, CREATED
+ws status --json  # machine-readable for coordination
+ws graph          # topological: base → children, sorted
+` + "`" + `` + "`" + `` + "`" + `
 
 ## Command Reference
 
