@@ -105,6 +105,11 @@ func (b *CopyBackend) LayerHash(dir string) string {
 			return nil
 		}
 		rel, _ := filepath.Rel(dir, path)
+		// Exclude .git from hash — two clones of the same repo
+		// should produce the same layer hash for dedup.
+		if rel == ".git" || strings.HasPrefix(rel, ".git/") {
+			return nil
+		}
 		files = append(files, rel)
 		return nil
 	})
