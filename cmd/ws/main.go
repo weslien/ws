@@ -416,6 +416,60 @@ func cmdDrop(args []string, be backend.Backender, store *storage.Store, log back
 	} else {
 		fmt.Printf("dropped %d workspaces\n", dropped)
 	}
+	if dropped == 0 {
+		os.Exit(1)
+	}
+}
+
+// topoSortLayers returns layer hashes sorted topologically: base layers
+// (no parent) first, then children in order of creation.
+func topoSortLayers(layers map[string]storage.LayerMeta) []string {
+	// Build child count and visited set
+	visited := map[string]bool{}
+	var result []string
+
+	// Find base layers (parent == "" or parent not in layers)
+	var bases []string
+	for hash, l := range layers {
+		if l.Parent == "" || layers[l.Parent].Hash == "" {
+			bases = append(bases, hash)
+		}
+	}
+	sort.Strings(bases)
+
+	// DFS from each base
+	var dfs func(hash string)
+	dfs = func(hash string) {
+		if visited[hash] {
+			return
+		}
+		visited[hash] = true
+		result = append(result, hash)
+		// Find children
+		var children []string
+		for h, l := range layers {
+			if l.Parent == hash {
+				children = append(children, h)
+			}
+		}
+		sort.Strings(children)
+		for _, c := range children {
+			dfs(c)
+		}
+	}
+
+	for _, b := range bases {
+		dfs(b)
+	}
+
+	// Add any orphaned layers (not reachable from bases)
+	for hash := range layers {
+		if !visited[hash] {
+			result = append(result, hash)
+		}
+	}
+
+	return result
 }
 
 func cmdGraph(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
@@ -427,16 +481,29 @@ func cmdGraph(args []string, be backend.Backender, store *storage.Store, log bac
 	workspaces := store.ReadWorkspaces()
 
 	if len(args) == 1 {
+		// Topological sort: base layers first, then children
+		sortedHashes := topoSortLayers(layers)
+
 		fmt.Println("Layers:")
-		for hash, l := range layers {
+		for _, hash := range sortedHashes {
+			l := layers[hash]
 			parent := "(base)"
 			if l.Parent != "" {
 				parent = l.Parent
 			}
 			fmt.Printf("  layer:%s <- %s [%s]\n", hash, parent, l.Message)
 		}
+
+		// Sort workspace names for stable output
+		wsNames := make([]string, 0, len(workspaces))
+		for n := range workspaces {
+			wsNames = append(wsNames, n)
+		}
+		sort.Strings(wsNames)
+
 		fmt.Println("\nWorkspaces:")
-		for name, w := range workspaces {
+		for _, name := range wsNames {
+			w := workspaces[name]
 			fmt.Printf("  ws:%s from layer:%s [%s]\n", name, w.FormedFrom, w.State)
 		}
 	} else {
