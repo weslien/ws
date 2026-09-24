@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sort"
 )
 
@@ -131,13 +132,19 @@ func (b *CopyBackend) Diff(wsA string, wsB string, layerB string, w io.Writer, _
 	return nil
 }
 
-// copyDir recursively copies src to dst.
+// copyDir recursively copies src to dst, excluding .git directories.
 func copyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		rel, _ := filepath.Rel(src, path)
+		if rel == ".git" || strings.HasPrefix(rel, ".git/") {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		dstPath := filepath.Join(dst, rel)
 		if info.IsDir() {
 			return os.MkdirAll(dstPath, info.Mode())

@@ -139,8 +139,6 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 		if err := be.Destroy(name, log); err != nil {
 			log.Error("force-drop: %v", err)
 		}
-		delete(workspaces, name)
-		store.WriteWorkspaces(workspaces)
 	}
 
 	var formedFrom string
@@ -214,8 +212,8 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 			if err := os.MkdirAll(layerDir, 0755); err != nil {
 				die("create layer dir: %v", err)
 			}
-			// Copy directory contents into the layer
-			cmd := exec.Command("tar", "-C", dirPath, "-cf", "-", ".")
+			// Copy directory contents into the layer (exclude .git)
+			cmd := exec.Command("tar", "-C", dirPath, "-cf", "-", "--exclude=.git", ".")
 			extract := exec.Command("tar", "-C", layerDir, "-xf", "-")
 			pipe, err := cmd.StdoutPipe()
 			if err != nil {
@@ -245,14 +243,16 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 		die("unknown source type: %s", source)
 	}
 
-	workspaces[name] = storage.WorkspaceMeta{
-		Name:       name,
-		Source:     source,
-		FormedFrom: formedFrom,
-		State:      "active",
-		CreatedAt:  time.Now().Format(time.RFC3339),
-	}
-	store.WriteWorkspaces(workspaces)
+	// Atomically register the workspace to prevent concurrent races
+	store.UpdateWorkspaces(func(m map[string]storage.WorkspaceMeta) {
+		m[name] = storage.WorkspaceMeta{
+			Name:       name,
+			Source:     source,
+			FormedFrom: formedFrom,
+			State:      "active",
+			CreatedAt:  time.Now().Format(time.RFC3339),
+		}
+	})
 	if jsonOut {
 		type getResult struct {
 			Workspace  string `json:"workspace"`
@@ -366,20 +366,23 @@ func cmdKeep(args []string, be backend.Backender, store *storage.Store, log back
 
 	layers := store.ReadLayers()
 	if _, exists := layers[hash]; !exists {
-		layers[hash] = storage.LayerMeta{
-			Hash:        hash,
-			Parent:      w.FormedFrom,
-			Message:     msg,
-			CreatedAt:   time.Now().Format(time.RFC3339),
-			CommittedBy: name,
-		}
-		store.WriteLayers(layers)
+		store.UpdateLayers(func(m map[string]storage.LayerMeta) {
+			m[hash] = storage.LayerMeta{
+				Hash:        hash,
+				Parent:      w.FormedFrom,
+				Message:     msg,
+				CreatedAt:   time.Now().Format(time.RFC3339),
+				CommittedBy: name,
+			}
+		})
 	}
 
 	// Update workspace to point to the new layer as its basis
-	w.FormedFrom = hash
-	workspaces[name] = w
-	store.WriteWorkspaces(workspaces)
+	store.UpdateWorkspaces(func(m map[string]storage.WorkspaceMeta) {
+		w := m[name]
+		w.FormedFrom = hash
+		m[name] = w
+	})
 	if jsonOut {
 		type keepResult struct {
 			Workspace string `json:"workspace"`
@@ -396,9 +399,11 @@ func cmdDrop(args []string, be backend.Backender, store *storage.Store, log back
 		printHelp("drop")
 		os.Exit(1)
 	}
-	workspaces := store.ReadWorkspaces()
 	dropped := 0
+	var droppedNames []string
 	for _, name := range args[1:] {
+		// Check existence first
+		workspaces := store.ReadWorkspaces()
 		if _, ok := workspaces[name]; !ok {
 			log.Error("workspace %q not found", name)
 			continue
@@ -407,10 +412,13 @@ func cmdDrop(args []string, be backend.Backender, store *storage.Store, log back
 			log.Error("destroy %s: %v", name, err)
 			continue
 		}
-		delete(workspaces, name)
+		// Atomically remove from metadata
+		store.UpdateWorkspaces(func(m map[string]storage.WorkspaceMeta) {
+			delete(m, name)
+		})
 		dropped++
+		droppedNames = append(droppedNames, name)
 	}
-	store.WriteWorkspaces(workspaces)
 	if dropped == 1 {
 		fmt.Printf("dropped workspace %s\n", args[1])
 	} else {
@@ -826,7 +834,8 @@ func cmdExport(args []string, be backend.Backender, store *storage.Store, log ba
 	if err := os.MkdirAll(dest, 0755); err != nil {
 		die("create dest: %v", err)
 	}
-	cmd := exec.Command("tar", "-C", wsDir, "-cf", "-", ".")
+	// Use tar to copy, excluding .git directory
+	cmd := exec.Command("tar", "-C", wsDir, "-cf", "-", "--exclude=.git", ".")
 	extract := exec.Command("tar", "-C", dest, "-xf", "-")
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
