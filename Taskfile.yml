@@ -76,3 +76,11 @@ tasks:
   check:
     desc: Run all checks (lint + test + e2e)
     deps: [lint, test, e2e]
+
+  scenarios:
+    desc: Run 100-scenario test suite (5 parallel tiers)
+    deps: [build]
+    cmds:
+      - ./scripts/scenario-test.sh
+    env:
+      WS: ./ws

@@ -7,6 +7,7 @@ WS="${WS:-ws}"
 DEMO="/tmp/ws-scenario-repo"
 RESULTS_FILE="/tmp/ws-scenario-results.txt"
 LOCK_FILE="/tmp/ws-scenario-setup.lock"
+LOCK_DIR="/tmp/ws-scenario-setup.lockdir"
 PASS=0; FAIL=0
 
 JQ_LAYER() {
@@ -48,8 +49,8 @@ t_cond() {
 
 # One-time setup: create demo repo + seed base layer
 ensure_setup() {
-  exec 9>"$LOCK_FILE"
-  flock 9
+  # mkdir-based lock — portable across Linux and macOS (no flock needed)
+  while ! mkdir "$LOCK_DIR" 2>/dev/null; do sleep 0.1; done
   if [ ! -d "$DEMO/.git" ]; then
     mkdir -p "$DEMO/src/api" "$DEMO/src/db" "$DEMO/test"
     cat > "$DEMO/go.mod" << 'EOF'
@@ -117,5 +118,5 @@ for w in d.get('workspaces',d) if isinstance(d,dict) else d:
 " 2>/dev/null || echo "")
   fi
   export BASE_LAYER
-  flock -u 9
+  rmdir "$LOCK_DIR" 2>/dev/null || true
 }
