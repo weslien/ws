@@ -21,13 +21,13 @@ $WS get layer:"$S22" --name=a22a >/dev/null 2>&1
 $WS get layer:"$S22" --name=a22b >/dev/null 2>&1
 $WS get layer:"$S22" --name=a22c >/dev/null 2>&1
 t_cond 22 "Three from seed" "coord.parallel_seed" "$WS status | grep -q a22a && $WS status | grep -q a22c"
-$WS drop seed22 a22a a22b a22c 2>/dev/null || true; $WS layer gc >/dev/null 2>&1
+$WS drop seed22 a22a a22b a22c 2>/dev/null || true
 
 # 23: Branch from agent
 $WS get layer:"$BASE_LAYER" --name=a23a >/dev/null 2>&1
 echo "x" > "$($WS path a23a)/src/x.go"
 t 23 "Branch from agent" "coord.sequential_branch" $WS get ws:a23a --name=a23b
-$WS drop a23a a23b 2>/dev/null || true; $WS layer gc >/dev/null 2>&1
+$WS drop a23a a23b 2>/dev/null || true
 
 # 24: Branch from kept layer
 $WS get layer:"$BASE_LAYER" --name=a24a >/dev/null 2>&1
@@ -35,7 +35,7 @@ echo "x" > "$($WS path a24a)/src/x.go"
 L24=$($WS keep a24a --json 2>/dev/null | JQ_LAYER)
 $WS drop a24a 2>/dev/null || true
 t 24 "Layer branch" "coord.layer_branch" $WS get layer:"$L24" --name=a24b
-$WS drop a24b 2>/dev/null || true; $WS layer gc >/dev/null 2>&1
+$WS drop a24b 2>/dev/null || true
 
 # 25: Merge two agents
 $WS get layer:"$BASE_LAYER" --name=c25s >/dev/null 2>&1
@@ -50,7 +50,7 @@ LB25=$($WS keep c25b --json 2>/dev/null | JQ_LAYER)
 $WS get layer:"$LA25" --name=c25m >/dev/null 2>&1
 $WS layer copy "$LB25" src/b.go "$($WS path c25m)/src/b.go" 2>/dev/null
 t 25 "Merge two" "coord.merge_two" $WS keep c25m --message="merged"
-$WS drop c25s c25a c25b c25m 2>/dev/null || true; $WS layer gc >/dev/null 2>&1
+$WS drop c25s c25a c25b c25m 2>/dev/null || true
 
 # 26: Merge three agents
 $WS get layer:"$BASE_LAYER" --name=c26s >/dev/null 2>&1
@@ -65,14 +65,14 @@ $WS get layer:"$L26_a" --name=c26m >/dev/null 2>&1
 $WS layer copy "$L26_b" src/b.go "$($WS path c26m)/src/b.go" 2>/dev/null
 $WS layer copy "$L26_c" src/c.go "$($WS path c26m)/src/c.go" 2>/dev/null
 t 26 "Merge three" "coord.merge_three" $WS keep c26m --message="merged3"
-$WS drop c26s c26_a c26_b c26_c c26m 2>/dev/null || true; $WS layer gc >/dev/null 2>&1
+$WS drop c26s c26_a c26_b c26_c c26m 2>/dev/null || true
 
 # 27: JSON pipeline
 $WS get layer:"$BASE_LAYER" --name=j27 >/dev/null 2>&1
 echo "x" > "$($WS path j27)/src/x.go"
 J27=$($WS keep j27 --json 2>/dev/null | JQ_LAYER)
 t_cond 27 "JSON pipeline" "coord.json_pipeline" "[ -n \"$J27\" ]"
-$WS drop j27 2>/dev/null || true; $WS layer gc >/dev/null 2>&1
+$WS drop j27 2>/dev/null || true
 
 # 28: Status --json
 $WS get layer:"$BASE_LAYER" --name=t28 >/dev/null 2>&1
@@ -84,7 +84,7 @@ $WS get layer:"$BASE_LAYER" --name=t29 >/dev/null 2>&1
 echo "x" > "$($WS path t29)/src/x.go"
 $WS keep t29 --message="t29" >/dev/null 2>&1
 t 29 "Layer ls --json" "coord.layer_ls_json" $WS layer ls --json
-$WS drop t29 2>/dev/null || true; $WS layer gc >/dev/null 2>&1
+$WS drop t29 2>/dev/null || true
 
 # 30: Cross-agent visibility
 $WS get layer:"$BASE_LAYER" --name=v30a >/dev/null 2>&1
@@ -98,7 +98,7 @@ echo "x" > "$($WS path h31)/src/x.go"
 L31=$($WS keep h31 --json 2>/dev/null | JQ_LAYER)
 $WS drop h31 2>/dev/null || true
 t 31 "Handoff" "coord.handoff" $WS get layer:"$L31" --name=h31b
-$WS drop h31b 2>/dev/null || true; $WS layer gc >/dev/null 2>&1
+$WS drop h31b 2>/dev/null || true
 
 # 32: Force re-branch
 $WS get layer:"$BASE_LAYER" --name=f32 >/dev/null 2>&1
@@ -116,7 +116,7 @@ LA33=$($WS keep lc33a --json 2>/dev/null | JQ_LAYER)
 mkdir -p /tmp/ws-t33-t2
 t 33 "Layer copy" "coord.layer_copy_merge" $WS layer copy "$LA33" src/a.go /tmp/ws-t33-t2/a.go
 rm -rf /tmp/ws-t33-t2
-$WS drop lc33s lc33a 2>/dev/null || true; $WS layer gc >/dev/null 2>&1
+$WS drop lc33s lc33a 2>/dev/null || true
 
 # 34: Layer diff agents
 $WS get layer:"$BASE_LAYER" --name=ld34s >/dev/null 2>&1
@@ -129,7 +129,7 @@ $WS get layer:"$S34" --name=ld34b >/dev/null 2>&1
 echo 'b' > "$($WS path ld34b)/src/b.go"
 LB34=$($WS keep ld34b --json 2>/dev/null | JQ_LAYER)
 t 34 "Layer diff agents" "coord.layer_diff_agents" $WS layer diff "$LA34" "$LB34"
-$WS drop ld34s ld34a ld34b 2>/dev/null || true; $WS layer gc >/dev/null 2>&1
+$WS drop ld34s ld34a ld34b 2>/dev/null || true
 
 # 35: ws diff two workspaces
 $WS get layer:"$BASE_LAYER" --name=wd35a >/dev/null 2>&1
@@ -145,7 +145,7 @@ echo "x" > "$($WS path g36a)/src/x.go"
 L36=$($WS keep g36a --json 2>/dev/null | JQ_LAYER)
 $WS get layer:"$L36" --name=g36b >/dev/null 2>&1
 t 36 "Graph topology" "coord.graph" $WS graph
-$WS drop g36a g36b 2>/dev/null || true; $WS layer gc >/dev/null 2>&1
+$WS drop g36a g36b 2>/dev/null || true
 
 # 37: Graph specific ws
 $WS get layer:"$BASE_LAYER" --name=g37a >/dev/null 2>&1
@@ -153,14 +153,14 @@ echo "x" > "$($WS path g37a)/src/x.go"
 L37=$($WS keep g37a --json 2>/dev/null | JQ_LAYER)
 $WS get layer:"$L37" --name=g37b >/dev/null 2>&1
 t 37 "Graph specific" "coord.graph_ws" $WS graph g37b
-$WS drop g37a g37b 2>/dev/null || true; $WS layer gc >/dev/null 2>&1
+$WS drop g37a g37b 2>/dev/null || true
 
 # 38: Keep --json
 $WS get layer:"$BASE_LAYER" --name=k38 >/dev/null 2>&1
 echo "x" > "$($WS path k38)/src/x.go"
 K38=$($WS keep k38 --json 2>/dev/null | JQ_LAYER)
 t_cond 38 "Keep --json" "coord.keep_json" "[ -n \"$K38\" ] && [ \"${#K38}\" -eq 16 ]"
-$WS drop k38 2>/dev/null || true; $WS layer gc >/dev/null 2>&1
+$WS drop k38 2>/dev/null || true
 
 # 39: Get --json
 G39=$($WS get layer:"$BASE_LAYER" --name=g39 --json 2>/dev/null | JQ_LAYER)
@@ -177,6 +177,6 @@ $WS keep e40a --message="e40" >/dev/null 2>&1
 mkdir -p /tmp/ws-e40-t2
 t 40 "Export consolidated" "coord.export_consolidated" $WS export e40a /tmp/ws-e40-t2
 rm -rf /tmp/ws-e40-t2
-$WS drop e40s e40a 2>/dev/null || true; $WS layer gc >/dev/null 2>&1
+$WS drop e40s e40a 2>/dev/null || true
 
 echo "T2: done $PASS pass $FAIL fail"
