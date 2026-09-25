@@ -690,6 +690,14 @@ func cmdLayer(args []string, be backend.Backender, store *storage.Store, log bac
 		fmt.Printf("created:   %s\n", l.CreatedAt)
 		fmt.Printf("committed: %s\n", l.CommittedBy)
 	case "gc":
+		// Hold the global metadata lock for the entire GC operation to prevent
+		// cross-file races (reading workspaces while modifying layers).
+		gLock, err := store.GlobalLock()
+		if err != nil {
+			die("gc: lock: %v", err)
+		}
+		defer gLock.Close()
+
 		layers := store.ReadLayers()
 		workspaces := store.ReadWorkspaces()
 		referenced := map[string]bool{}

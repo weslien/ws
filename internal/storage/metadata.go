@@ -57,6 +57,20 @@ func lockFile(path string) (*os.File, error) {
 	return f, nil
 }
 
+// globalLockFile returns the path to the single global metadata lock.
+// All metadata operations (reads and writes) should hold this lock to
+// prevent cross-file races (e.g. GC reading workspaces while modifying layers).
+func (s *Store) globalLockFile() string {
+	_ = os.MkdirAll(s.metaDir(), 0755)
+	return filepath.Join(s.metaDir(), ".lock")
+}
+
+// GlobalLock acquires an exclusive lock on the global metadata lock file.
+// Caller must Close the returned file handle to release the lock.
+func (s *Store) GlobalLock() (*os.File, error) {
+	return lockFile(s.globalLockFile())
+}
+
 // atomicWrite writes data to path atomically: write to temp file, then rename.
 // The lockFile handle must be held by the caller during this operation.
 func atomicWrite(path string, data []byte) error {
@@ -86,6 +100,10 @@ func (s *Store) WriteLayers(m map[string]LayerMeta) error {
 	}
 	defer f.Close()
 	return atomicWrite(s.layersFile(), data)
+}
+
+func (s *Store) WorkspacesFile() string {
+	return s.workspacesFile()
 }
 
 func (s *Store) ReadWorkspaces() map[string]WorkspaceMeta {
