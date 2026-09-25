@@ -105,9 +105,26 @@ EOF
   fi
   # Ensure base layer exists — keep _base workspace persistent (don't drop)
   if ! $WS status 2>/dev/null | grep -q '_base'; then
-    $WS get base:"$DEMO" --name=_base >/dev/null 2>&1
-    echo "x" > "$($WS path _base)/src/x.go"
+    # Show errors during setup — don't suppress
+    if ! $WS get base:"$DEMO" --name=_base 2>&1; then
+      echo "FATAL: $WS get base:\"$DEMO\" --name=_base failed" >&2
+      rmdir "$LOCK_DIR" 2>/dev/null || true
+      return 1
+    fi
+    local base_path
+    base_path="$($WS path _base)"
+    if [ -z "$base_path" ] || [ ! -d "$base_path" ]; then
+      echo "FATAL: ws path _base returned empty or nonexistent: '$base_path'" >&2
+      rmdir "$LOCK_DIR" 2>/dev/null || true
+      return 1
+    fi
+    echo "x" > "$base_path/src/x.go"
     BASE_LAYER=$($WS keep _base --json 2>/dev/null | JQ_LAYER)
+    if [ -z "$BASE_LAYER" ]; then
+      echo "FATAL: ws keep _base --json returned empty layer hash" >&2
+      rmdir "$LOCK_DIR" 2>/dev/null || true
+      return 1
+    fi
   else
     # _base workspace already exists (created by another tier)
     BASE_LAYER=$($WS status --json 2>/dev/null | python3 -c "
