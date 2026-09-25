@@ -3,7 +3,7 @@
 set -uo pipefail  # no -e
 source "$(dirname "$0")/common.sh"
 DEMO="/tmp/ws-scenario-repo"
-ensure_setup
+ensure_setup || { echo "T4: setup failed"; exit 1; }
 
 echo "T4: starting"
 

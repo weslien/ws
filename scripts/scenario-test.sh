@@ -19,6 +19,10 @@ fi
 
 export WS="$WS_BIN"
 
+# Force copy backend — container backend has machine naming restrictions
+# (e.g. underscores not allowed) that conflict with test workspace names
+export WS_BACKEND=copy
+
 echo "=== ws 100-Scenario Test Suite (5 parallel tiers) ==="
 echo "Binary: $WS_BIN"
 echo "Version: $($WS_BIN --version)"
