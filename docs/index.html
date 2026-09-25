@@ -8,76 +8,28 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <style>
-    /* ─── tokens: Pixel Terminal ──────────────────────────────────────
-       Retro 8-bit CRT phosphor aesthetic. Deep navy surfaces, pixel
-       display font, monospace body, sharp corners, amber primary accent.
-       Card background = --surface (#121829) = colors.neutral in DESIGN.md */
     :root {
-      --bg:        #0a0e1a;   /* bg-base — deepest navy CRT void */
-      --surface:   #121829;   /* neutral / bg-surface — cards, terminal windows */
-      --fg:        #e8eaf0;   /* text-primary — off-white, never #fff */
-      --muted:     #9aa3b8;   /* text-secondary — muted blue-gray */
-      --border:    #2a3450;   /* hairline borders */
-      --accent:    #ffb627;   /* amber — primary phosphor accent */
-
-      /* extended Pixel Terminal palette */
-      --bg-elevated:  #1a2238;  /* headers, toolbars, badge backgrounds */
-      --bg-inset:     #060912;  /* terminal interiors — darker than base */
-      --text-muted:   #5c6577;  /* faintest text tier */
-      --green:        #5fe0a0;  /* success, active, shell prompt ($) */
-      --green-dim:    #3da06e;
-      --blue:         #5b9eff;  /* links, navigation, interactive */
-      --blue-dim:     #3d72b8;
-      --magenta:      #ff5c8a;  /* warnings, destructive actions */
-      --cyan:         #4dd2ff;  /* link hover, special highlights */
-      --amber-dim:    #cc8c1a;
-      --border-bright:#3d4f73;  /* focused/active borders */
-      --selection:    #1e3a5f;
-
-      /* phosphor glow shadows — CRT phosphor emission */
-      --glow-amber:   0 0 12px rgba(255, 182, 39, 0.3), 0 0 24px rgba(255, 182, 39, 0.1);
-      --glow-green:   0 0 12px rgba(95, 224, 160, 0.3), 0 0 24px rgba(95, 224, 160, 0.1);
-      --glow-blue:    0 0 12px rgba(91, 158, 255, 0.3), 0 0 24px rgba(91, 158, 255, 0.1);
-      --inset-screen: inset 0 0 60px rgba(0, 0, 0, 0.6);
-
-      /* derived */
-      --accent-soft: color-mix(in oklch, var(--accent) 14%, transparent);
-      --fg-soft:     color-mix(in oklch, var(--fg) 6%, transparent);
-
-      /* type — display = Press Start 2P (pixel), body = JetBrains Mono */
-      --font-display: 'Press Start 2P', 'VT323', monospace;
-      --font-body:    'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-      --font-mono:    'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, monospace;
-
-      /* scale — Press Start 2P is wide; sizes are conservative */
-      --fs-h1: clamp(26px, 4vw, 38px);
-      --fs-h2: clamp(18px, 3vw, 26px);
-      --fs-h3: 16px;
-      --fs-lead: 17px;
-      --fs-body: 16px;
-      --fs-meta: 12px;
-
-      /* spacing — 4px grid (Pixel Terminal spec) */
-      --gap-xs: 4px;
-      --gap-sm: 8px;
-      --gap-md: 16px;
-      --gap-lg: 24px;
-      --gap-xl: 32px;
-      --gap-2xl: 48px;
-      --gap-3xl: 64px;
-      --gap-4xl: 96px;
+      --bg:        #1a1a1a;
+      --surface:   #242424;
+      --bg-elev:   #2a2a2a;
+      --fg:        #e0e0e0;
+      --muted:     #888;
+      --border:    #333;
+      --accent-a:  #00e1ff;
+      --accent-b:  #ff00fb;
+      --accent:    var(--accent-a);
+      --gradient:  linear-gradient(90deg, var(--accent-a), var(--accent-b));
+      --glow:      0 0 12px rgba(0, 225, 255, 0.25), 0 0 24px rgba(255, 0, 251, 0.15);
+      --font-display: 'Inter', system-ui, sans-serif;
+      --font-body:    'JetBrains Mono', 'Fira Code', monospace;
+      --radius:   10px;
       --container: 920px;
       --gutter: 24px;
-
-      /* sharp corners — 8-bit pixels have no curves */
-      --radius: 0px;
-      --radius-lg: 0px;
     }
 
-    /* ─── reset & base ──────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; }
     html { -webkit-text-size-adjust: 100%; }
     body {
@@ -85,317 +37,104 @@
       background: var(--bg);
       color: var(--fg);
       font-family: var(--font-body);
-      font-size: var(--fs-body);
+      font-size: 15px;
       line-height: 1.7;
-      text-rendering: optimizeLegibility;
       -webkit-font-smoothing: antialiased;
     }
-    ::selection { background: var(--selection); color: var(--fg); }
+    ::selection { background: rgba(0, 225, 255, 0.2); color: var(--fg); }
     img, svg { display: block; max-width: 100%; }
     a { color: inherit; text-decoration: none; }
-    button { font: inherit; cursor: pointer; }
-    code { font-family: var(--font-mono); font-size: 0.85em; color: var(--accent); background: var(--bg-elevated); padding: 1px 5px; border-radius: 0; }
-    p { text-wrap: pretty; }
-    h1, h2, h3, h4 { text-wrap: balance; }
+    code { font-family: var(--font-body); font-size: 0.85em; color: var(--accent-a); background: var(--bg-elev); padding: 2px 6px; border-radius: 4px; }
+    p { text-wrap: pretty; margin: 0; }
+    h1, h2, h3 { text-wrap: balance; margin: 0; }
 
-    /* ─── layout primitives ─────────────────────────────────────────── */
-    .container {
-      max-width: var(--container);
-      margin-inline: auto;
-      padding-inline: var(--gutter);
-    }
-    .section {
-      padding-block: clamp(48px, 8vw, 64px);
-    }
+    .container { max-width: var(--container); margin-inline: auto; padding-inline: var(--gutter); }
+    .section { padding-block: clamp(48px, 8vw, 72px); }
     .section + .section { border-top: 1px solid var(--border); }
-    .stack { display: flex; flex-direction: column; }
-    .stack > * + * { margin-top: var(--gap-md); }
-    .row { display: flex; align-items: center; gap: var(--gap-md); }
-    .row-between { display: flex; align-items: center; justify-content: space-between; gap: var(--gap-md); }
-    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--gap-lg); }
-    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap-lg); }
-    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap-md); }
-    .grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: var(--gap-xl); align-items: start; }
-    .grid-1-2 { display: grid; grid-template-columns: 1fr 2fr; gap: var(--gap-xl); align-items: start; }
-    @media (max-width: 920px) {
-      .grid-2, .grid-3, .grid-4, .grid-2-1, .grid-1-2 { grid-template-columns: 1fr; }
-    }
 
-    /* ─── type ────────────────────────────────────────────────────────
-       Press Start 2P for all headings — positive letter-spacing for
-       legibility (pixel fonts need room). Weight is always 400. */
-    .h1, h1 {
-      font-family: var(--font-display);
-      font-size: var(--fs-h1);
-      line-height: 1.2;
-      letter-spacing: 0.02em;
-      font-weight: 400;
-      margin: 0;
-    }
-    .h2, h2 {
-      font-family: var(--font-display);
-      font-size: var(--fs-h2);
-      line-height: 1.3;
-      letter-spacing: 0.02em;
-      font-weight: 400;
-      margin: 0;
-    }
-    .h3, h3 {
-      font-family: var(--font-display);
-      font-size: var(--fs-h3);
-      line-height: 1.5;
-      letter-spacing: 0.05em;
-      font-weight: 400;
-      margin: 0;
-    }
-    .lead {
-      font-family: var(--font-body);
-      font-size: var(--fs-lead);
-      line-height: 1.7;
-      color: var(--muted);
-      max-width: 52ch;
-      margin: 0;
-    }
-    .eyebrow {
-      font-family: var(--font-display);
-      font-size: 0.625rem;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--accent);
-      margin: 0 0 var(--gap-md);
-    }
-    .meta {
-      font-family: var(--font-mono);
-      font-size: var(--fs-meta);
-      color: var(--muted);
-      letter-spacing: 0.05em;
-    }
-    .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    /* type */
+    h1 { font-family: var(--font-display); font-size: clamp(28px, 4vw, 42px); font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+    h2 { font-family: var(--font-display); font-size: clamp(22px, 3vw, 30px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.3; }
+    h3 { font-family: var(--font-display); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+    .lead { color: var(--muted); max-width: 56ch; font-size: 16px; }
+    .eyebrow { font-family: var(--font-body); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-a); margin-bottom: 12px; }
+    .meta { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; }
 
-    /* ─── chrome: nav + footer ──────────────────────────────────────── */
-    .topnav {
-      position: sticky; top: 0; z-index: 10;
-      background: var(--bg);
-      border-bottom: 1px solid var(--border);
-    }
-    .topnav-inner { display: flex; align-items: center; justify-content: space-between; padding-block: 16px; }
-    .topnav .logo {
-      font-family: var(--font-display);
-      font-size: 1rem;
-      font-weight: 400;
-      letter-spacing: 0;
-    }
-    .topnav nav { display: flex; gap: var(--gap-xl); }
-    .topnav nav a {
-      font-family: var(--font-display);
-      font-size: 0.625rem;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-    .topnav nav a:hover { color: var(--accent); }
-    @media (max-width: 640px) {
-      .topnav nav { display: none; }
-    }
-    .pagefoot {
-      padding-block: var(--gap-xl);
-      color: var(--muted);
-      font-family: var(--font-mono);
-      font-size: var(--fs-meta);
-      border-top: 1px solid var(--border);
-    }
-    .pagefoot .row-between { flex-wrap: wrap; gap: var(--gap-md); }
+    .grad-text { background: var(--gradient); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 
-    /* ─── buttons ─────────────────────────────────────────────────────
-       Primary: amber fill, dark text, phosphor glow. Sharp corners.
-       Secondary: transparent, green text + border. Ghost: text only. */
-    .btn {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 12px 24px;
-      border-radius: 0;
-      border: 1px solid transparent;
-      font-family: var(--font-body);
-      font-size: 15px;
-      font-weight: 500;
-      letter-spacing: 0;
-      transition: transform 0.05s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
-    }
+    /* nav */
+    .topnav { position: sticky; top: 0; z-index: 10; background: rgba(26,26,26,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+    .topnav-inner { display: flex; align-items: center; justify-content: space-between; padding-block: 14px; }
+    .topnav .brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; font-size: 18px; }
+    .topnav .brand svg { width: 28px; height: 18px; }
+    .topnav nav { display: flex; gap: 28px; }
+    .topnav nav a { font-size: 14px; color: var(--muted); transition: color 0.15s; }
+    .topnav nav a:hover { color: var(--fg); }
+    @media (max-width: 640px) { .topnav nav { display: none; } }
+
+    /* buttons */
+    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px; border-radius: var(--radius); border: 1px solid transparent; font-family: var(--font-body); font-size: 14px; font-weight: 500; transition: transform 0.05s, background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s; }
     .btn:active { transform: translateY(1px); }
-    .btn:focus-visible, a:focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 2px;
-    }
-    .btn-primary {
-      background: var(--accent);
-      color: var(--bg);
-      border-color: var(--accent);
-      box-shadow: var(--glow-amber);
-    }
-    .btn-primary:hover {
-      background: var(--amber-dim);
-      border-color: var(--amber-dim);
-      box-shadow: var(--glow-amber);
-    }
-    .btn-secondary {
-      background: transparent;
-      color: var(--green);
-      border-color: var(--green);
-    }
-    .btn-secondary:hover {
-      background: var(--bg-elevated);
-      color: var(--green);
-      border-color: var(--green);
-    }
-    .btn-ghost {
-      background: transparent;
-      color: var(--muted);
-      border-color: transparent;
-      padding-inline: 8px;
-    }
-    .btn-ghost:hover { color: var(--accent); }
-    .btn-arrow::after { content: ' →'; transition: transform 0.15s ease; }
+    .btn-primary { background: var(--gradient); color: #fff; border: 0; box-shadow: var(--glow); font-weight: 600; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-secondary { background: transparent; color: var(--accent-a); border-color: var(--border); }
+    .btn-secondary:hover { border-color: var(--accent-a); background: rgba(0,225,255,0.05); }
+    .btn-ghost { background: transparent; color: var(--muted); border-color: transparent; padding-inline: 8px; }
+    .btn-ghost:hover { color: var(--fg); }
+    .btn-arrow::after { content: ' →'; transition: transform 0.15s; }
     .btn-arrow:hover::after { transform: translateX(2px); }
 
-    /* ─── card / surface ──────────────────────────────────────────────
-       Card bg = --surface = #121829 = colors.neutral (the diff change).
-       No radius (8-bit), 1px border, 24px padding (DESIGN.md spec). */
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 0;
-      padding: 24px;
-    }
+    /* card */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
     .card-flat { background: transparent; border: 0; padding: 0; }
-    .card-rule { background: transparent; border: 0; border-top: 1px solid var(--border); padding: 24px 0 0; border-radius: 0; }
 
-    /* ─── feature cell ──────────────────────────────────────────────── */
-    .feature .feature-mark {
-      width: 36px; height: 36px;
-      display: grid; place-items: center;
-      border: 1px solid var(--border);
-      border-radius: 0;
-      margin-bottom: var(--gap-md);
-    }
-    .feature .feature-mark svg { width: 18px; height: 18px; }
-    .feature h3 { margin-bottom: 8px; }
-    .feature p  { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
-
-    /* ─── pill / badge / tag ──────────────────────────────────────────
-       No pill shapes — 8-bit means sharp corners. */
-    .pill {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 4px 8px;
-      background: var(--bg-elevated);
-      color: var(--accent);
-      border-radius: 0;
-      font-family: var(--font-mono);
-      font-size: 11px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-    .tag {
-      display: inline-flex; align-items: center;
-      padding: 4px 8px;
-      background: transparent;
-      color: var(--muted);
-      border: 1px solid var(--border);
-      border-radius: 0;
-      font-family: var(--font-mono);
-      font-size: 11px;
-      letter-spacing: 0.04em;
-    }
-
-    /* ─── table ─────────────────────────────────────────────────────── */
-    .ds-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    .ds-table th, .ds-table td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border); }
-    .ds-table th { color: var(--muted); font-weight: 400; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
-    .ds-table tbody tr:hover { background: var(--fg-soft); }
-    .ds-table .num-col { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
-
-    /* ─── terminal window (signature Pixel Terminal component) ────────
-       Box-drawing border, bg-inset body, bg-elevated header bar.
-       Inset shadow for CRT depth. Horizontal scroll on narrow screens. */
-    .terminal-window {
-      border: 1px solid var(--border);
-      background: var(--bg-inset);
-      box-shadow: var(--inset-screen);
-    }
-    .terminal-header {
-      background: var(--bg-elevated);
-      color: var(--muted);
-      padding: 8px 16px;
-      font-family: var(--font-mono);
-      font-size: 12px;
-      letter-spacing: 0.04em;
-      border-bottom: 1px solid var(--border);
-    }
-    .terminal-body {
-      padding: 20px;
-      font-family: var(--font-mono);
-      font-size: 13px;
-      line-height: 1.8;
-      color: var(--fg);
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      overflow-x: auto;
-    }
-    .terminal-body .prompt { color: var(--green); }
+    /* terminal */
+    .terminal { background: #0d0d0d; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .terminal-head { background: var(--bg-elev); padding: 8px 16px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+    .terminal-body { padding: 20px; font-size: 13px; line-height: 1.8; white-space: pre-wrap; overflow-x: auto; }
+    .terminal-body .prompt { color: var(--accent-a); }
     .terminal-body .out { color: var(--muted); }
-    .terminal-body .active { color: var(--green); }
-    .terminal-body .amber-text { color: var(--accent); }
+    .terminal-body .ok { color: #5fe0a0; }
+    .terminal-body .grad { color: var(--accent-b); }
 
-    /* ─── code block (inline, smaller) ──────────────────────────────── */
-    .code-block {
-      background: var(--bg-inset);
-      border: 1px solid var(--border);
-      border-radius: 2px;
-      padding: 16px;
-      font-family: var(--font-mono);
-      font-size: 13px;
-      line-height: 1.8;
-      color: var(--fg);
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      overflow-x: auto;
-    }
-    .code-block .prompt { color: var(--green); }
+    /* feature grid */
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center; }
+    @media (max-width: 768px) { .grid-3, .grid-2 { grid-template-columns: 1fr; } }
+    .feature-icon { width: 40px; height: 40px; border-radius: var(--radius); display: grid; place-items: center; margin-bottom: 16px; border: 1px solid var(--border); }
+    .feature-icon svg { width: 20px; height: 20px; }
+    .feature h3 { margin-bottom: 8px; }
+    .feature p { color: var(--muted); font-size: 14px; }
 
-    /* ─── divider ───────────────────────────────────────────────────── */
-    .rule  { border: 0; border-top: 1px solid var(--border); margin: 0; }
-    .rule-strong { border: 0; border-top: 1px solid var(--fg); margin: 0; }
+    /* command list */
+    .cmd-row { display: grid; grid-template-columns: 130px 1fr 80px; gap: 24px; padding: 16px 0; border-top: 1px solid var(--border); align-items: baseline; }
+    .cmd-row h3 { font-size: 15px; }
+    .cmd-row p { margin-top: 4px; font-size: 13px; color: var(--muted); }
+    .cmd-row .tag { font-size: 11px; color: var(--accent-a); text-align: right; text-transform: uppercase; letter-spacing: 0.04em; }
+    @media (max-width: 640px) { .cmd-row { grid-template-columns: 1fr; gap: 4px; } .cmd-row .tag { text-align: left; } }
 
-    /* ─── hero variants ─────────────────────────────────────────────── */
-    .hero          { padding-block: clamp(64px, 10vw, 96px); }
-    .hero-center   { text-align: center; max-width: 36ch; margin-inline: auto; }
-    .hero h1       { margin-bottom: var(--gap-md); }
-    .hero .lead    { margin-bottom: var(--gap-lg); }
-    .hero-cta      { display: inline-flex; gap: var(--gap-sm); flex-wrap: wrap; }
-    .hero-center .hero-cta { justify-content: center; }
-    .hero-split    { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap-2xl); align-items: center; }
-    @media (max-width: 920px) { .hero-split { grid-template-columns: 1fr; } }
-
-    /* ─── log row (commands list) ───────────────────────────────────── */
-    .log-row {
-      display: grid;
-      grid-template-columns: 140px 1fr 100px;
-      gap: var(--gap-lg);
-      padding: 20px 0;
-      border-top: 1px solid var(--border);
-      align-items: baseline;
-    }
-    .log-row .meta { color: var(--muted); }
-    .log-row h3 { font-size: 15px; }
-    .log-row .pull { text-align: right; }
-    @media (max-width: 640px) {
-      .log-row { grid-template-columns: 1fr; gap: 4px; }
-      .log-row .pull { text-align: left; }
-    }
+    .hero { text-align: center; padding-block: clamp(56px, 10vw, 88px); }
+    .hero .lead { margin-inline: auto; margin-bottom: 32px; }
+    .hero-cta { display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+    .pagefoot { padding-block: 32px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+    .pagefoot .container { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
   </style>
 </head>
 <body>
   <header class="topnav">
     <div class="container topnav-inner">
-      <span class="logo">ws</span>
+      <span class="brand">
+        <svg viewBox="0 0 500 320" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="nav-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#00E1FF"/>
+              <stop offset="100%" stop-color="#FF00FB"/>
+            </linearGradient>
+          </defs>
+          <path d="M 140 110 L 175 190 L 210 110 L 245 190 C 260 120, 285 110, 315 110 C 350 110, 355 145, 315 150 C 275 155, 275 195, 315 195 C 345 195, 360 175, 355 160" fill="none" stroke="url(#nav-grad)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        ws
+      </span>
       <nav>
         <a href="#features">Concepts</a>
         <a href="#commands">Commands</a>
@@ -406,51 +145,59 @@
     </div>
   </header>
 
-  <main id="content">
-
-    <!-- ── Section 1: Hero ─────────────────────────────────────────── -->
+  <main>
+    <!-- Hero -->
     <section class="section hero">
-      <div class="container hero-center">
-        <p class="eyebrow">WORKSPACE GRAPHS · v0.6.0</p>
-        <h1>Mutable workspaces<br>from immutable layers</h1>
-        <p class="lead">Workspaces form from layers, other workspaces, or a git repo. Branch from another workspace's uncommitted state without Git index races. Keep what you want as a new layer; drop the rest. JSON output for agent coordination. 10 reproducible multi-agent scenarios.</p>
-        <div class="hero-cta">
+      <div class="container">
+        <svg viewBox="0 0 500 320" xmlns="http://www.w3.org/2000/svg" style="width: 200px; margin: 0 auto 24px;">
+          <defs>
+            <linearGradient id="hero-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#00E1FF"/>
+              <stop offset="100%" stop-color="#FF00FB"/>
+            </linearGradient>
+          </defs>
+          <path d="M 140 110 L 175 190 L 210 110 L 245 190 C 260 120, 285 110, 315 110 C 350 110, 355 145, 315 150 C 275 155, 275 195, 315 195 C 345 195, 360 175, 355 160" fill="none" stroke="url(#hero-grad)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <p class="eyebrow">WORKSPACE GRAPHS · v0.7.0</p>
+        <h1><span class="grad-text">Mutable workspaces</span><br>from immutable layers</h1>
+        <p class="lead" style="margin-top: 20px;">Workspaces form from layers, other workspaces, or a git repo. Branch from another workspace's uncommitted state without Git index races. Keep what you want as a new layer; drop the rest. JSON output for agent coordination. 100 tested scenarios.</p>
+        <div class="hero-cta" style="margin-top: 28px;">
           <a class="btn btn-primary" href="#install">Install</a>
           <a class="btn btn-ghost btn-arrow" href="https://github.com/weslien/ws">View source</a>
         </div>
-        <div class="terminal-window" style="margin-top: 40px; max-width: 560px; margin-inline: auto; text-align: left;">
-          <div class="terminal-header">ws — install</div>
+        <div class="terminal" style="margin-top: 40px; max-width: 560px; margin-inline: auto; text-align: left;">
+          <div class="terminal-head">ws — install</div>
           <div class="terminal-body"><span class="prompt">$</span> curl -sSL https://raw.githubusercontent.com/weslien/ws/main/install.sh | bash
-<span class="out">installed ws v0.6.0 → ~/.local/bin/ws</span></div>
+<span class="out">installed ws v0.7.0 → ~/.local/bin/ws</span></div>
         </div>
       </div>
     </section>
 
-    <!-- ── Section 2: Feature triplet (core primitives) ────────────── -->
+    <!-- Core primitives -->
     <section class="section" id="features">
-      <div class="container stack" style="gap: 48px;">
-        <div style="max-width: 36ch;">
+      <div class="container">
+        <div style="max-width: 40ch; margin-bottom: 40px;">
           <p class="eyebrow">CORE PRIMITIVES</p>
           <h2>Layers, workspaces,<br>and the graph between them</h2>
         </div>
         <div class="grid-3">
           <div class="feature card-flat">
-            <div class="feature-mark" style="color: var(--green);">
-              <svg viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><rect x="6" y="6" width="12" height="12"/></svg>
+            <div class="feature-icon" style="color: var(--accent-a);">
+              <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
             </div>
             <h3>Layer</h3>
             <p>An immutable, content-addressed directory at ~/.ws/layers/&lt;hash&gt;. Can't be modified after creation. The unit of sharing.</p>
           </div>
           <div class="feature card-flat">
-            <div class="feature-mark" style="color: var(--blue);">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" shape-rendering="crispEdges"><rect x="5" y="7" width="14" height="12"/><path d="M5 11h14"/></svg>
+            <div class="feature-icon" style="color: var(--accent-b);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="7" width="14" height="12" rx="2"/><path d="M5 11h14"/></svg>
             </div>
             <h3>Workspace</h3>
             <p>A mutable working directory created from a layer. <code>keep</code> promotes it to a new layer; <code>drop</code> deletes it.</p>
           </div>
           <div class="feature card-flat">
-            <div class="feature-mark" style="color: var(--cyan);">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" shape-rendering="crispEdges"><path d="M12 3v18M6 9h12M6 9v6M18 9v6"/></svg>
+            <div class="feature-icon" style="color: var(--accent-a);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M6 9h12M6 9v6M18 9v6"/></svg>
             </div>
             <h3>Graph</h3>
             <p>The provenance chain: parent → parent → base. <code>ws graph</code> prints this tree so you know where a workspace came from.</p>
@@ -459,19 +206,19 @@
       </div>
     </section>
 
-    <!-- ── Section 3: Terminal demo (split) ────────────────────────── -->
+    <!-- How it works -->
     <section class="section">
-      <div class="container hero-split">
+      <div class="container grid-2">
         <div>
           <p class="eyebrow">HOW IT WORKS</p>
           <h2>Branch from<br>uncommitted state</h2>
-          <p class="lead" style="margin-top: 20px;">A workspace can branch from another workspace's current state — including uncommitted changes. The base layer is never modified, so branching is safe and instant. No Git index to race against.</p>
-          <div style="margin-top: 28px;">
+          <p class="lead" style="margin-top: 16px;">A workspace can branch from another workspace's current state — including uncommitted changes. The base layer is never modified, so branching is safe and instant. No Git index to race against.</p>
+          <div style="margin-top: 24px;">
             <a class="btn btn-ghost btn-arrow" href="https://github.com/weslien/ws#worked-example">Read the worked example</a>
           </div>
         </div>
-        <div class="terminal-window">
-          <div class="terminal-header">ws — workspace graph</div>
+        <div class="terminal">
+          <div class="terminal-head">ws — workspace graph</div>
           <div class="terminal-body"><span class="prompt">$</span> ws get base:https://github.com/you/project --name=feature-a --json
 <span class="out">{"workspace":"feature-a","formed_from":"a3f4d9c2e1b5"}</span>
 
@@ -485,17 +232,17 @@
 <span class="out">{"workspaces":[{"workspace":"feature-a","layer":"8c2e1ba7d3f4","dirty":"no"}, ...]}</span>
 
 <span class="prompt">$</span> ws graph feature-b
-ws:feature-b <span class="active">[active]</span>
-  └─ layer:8c2e1ba7d3f4 <span class="amber-text">[added lodash]</span>
+ws:feature-b <span class="ok">[active]</span>
+  └─ layer:8c2e1ba7d3f4 <span class="grad">[added lodash]</span>
     └─ layer:a3f4d9c2e1b5 [base:https://github.com/you/project#HEAD]</div>
         </div>
       </div>
     </section>
 
-    <!-- ── Section 4: Commands (log list) ──────────────────────────── -->
+    <!-- Commands -->
     <section class="section" id="commands">
       <div class="container">
-        <div class="row-between" style="margin-bottom: 32px; flex-wrap: wrap; gap: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 32px; flex-wrap: wrap; gap: 16px;">
           <div>
             <p class="eyebrow">COMMANDS</p>
             <h2>The command set</h2>
@@ -503,129 +250,35 @@ ws:feature-b <span class="active">[active]</span>
           <a class="btn btn-ghost btn-arrow" href="https://github.com/weslien/ws#commands">Full reference</a>
         </div>
         <div>
-          <article class="log-row">
-            <span class="meta">ws get</span>
-            <div>
-              <h3>Create a workspace</h3>
-              <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">From a layer, another workspace, or a git repo URL.</p>
-            </div>
-            <span class="pull meta">CREATE</span>
-          </article>
-          <article class="log-row">
-            <span class="meta">ws run</span>
-            <div>
-              <h3>Run a command</h3>
-              <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">Execute inside the workspace filesystem. Writes go to the private overlay.</p>
-            </div>
-            <span class="pull meta">EXEC</span>
-          </article>
-          <article class="log-row">
-            <span class="meta">ws diff</span>
-            <div>
-              <h3>Show differences</h3>
-              <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">Against the base layer, or against another workspace.</p>
-            </div>
-            <span class="pull meta">DIFF</span>
-          </article>
-          <article class="log-row">
-            <span class="meta">ws keep</span>
-            <div>
-              <h3>Save as a layer</h3>
-              <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">Commit workspace changes into an immutable, content-addressed layer.</p>
-            </div>
-            <span class="pull meta">SAVE</span>
-          </article>
-          <article class="log-row">
-            <span class="meta">ws drop</span>
-            <div>
-              <h3>Delete a workspace</h3>
-              <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">Removes the workspace and all uncommitted changes. Base layer is untouched.</p>
-            </div>
-            <span class="pull meta">DELETE</span>
-          </article>
-          <article class="log-row">
-            <span class="meta">ws graph</span>
-            <div>
-              <h3>Print the graph</h3>
-              <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">Full layer + workspace DAG, or a single workspace's provenance tree.</p>
-            </div>
-            <span class="pull meta">INSPECT</span>
-          </article>
-          <article class="log-row">
-            <span class="meta">ws layer ls</span>
-            <div>
-              <h3>List layers</h3>
-              <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">Every layer in the local store with its hash and parent.</p>
-            </div>
-            <span class="pull meta">LIST</span>
-          </article>
-          <article class="log-row">
-            <span class="meta">ws layer gc</span>
-            <div>
-              <h3>Collect garbage</h3>
-              <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">Remove layers no longer reachable from a live workspace.</p>
-            </div>
-            <span class="pull meta">GC</span>
-          </article>
-          <article class="log-row">
-            <span class="meta">ws status</span>
-            <div>
-              <h3>Show all workspaces</h3>
-              <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">Table with dirty/clean state, layer, message, and created timestamp. <code>--json</code> for agents.</p>
-            </div>
-            <span class="pull meta">INSPECT</span>
-          </article>
-          <article class="log-row">
-            <span class="meta">ws path</span>
-            <div>
-              <h3>Print workspace path</h3>
-              <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">Resolve a workspace name to its filesystem path. No hardcoding.</p>
-            </div>
-            <span class="pull meta">PATH</span>
-          </article>
-          <article class="log-row">
-            <span class="meta">ws export</span>
-            <div>
-              <h3>Export workspace</h3>
-              <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">Copy workspace contents to an external directory for git commit.</p>
-            </div>
-            <span class="pull meta">EXPORT</span>
-          </article>
-          <article class="log-row">
-            <span class="meta">ws layer copy</span>
-            <div>
-              <h3>Copy from a layer</h3>
-              <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">Copy a file from an immutable layer to a destination path.</p>
-            </div>
-            <span class="pull meta">COPY</span>
-          </article>
-          <article class="log-row">
-            <span class="meta">--json</span>
-            <div>
-              <h3>Machine-readable output</h3>
-              <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">JSON flag on <code>get</code>, <code>keep</code>, <code>status</code>, <code>layer ls</code> for agent coordination.</p>
-            </div>
-            <span class="pull meta">JSON</span>
-          </article>
+          <article class="cmd-row"><span class="meta">ws get</span><div><h3>Create a workspace</h3><p>From a layer, another workspace, or a git repo URL.</p></div><span class="tag">CREATE</span></article>
+          <article class="cmd-row"><span class="meta">ws run</span><div><h3>Run a command</h3><p>Execute inside the workspace filesystem. Writes go to the private overlay.</p></div><span class="tag">EXEC</span></article>
+          <article class="cmd-row"><span class="meta">ws diff</span><div><h3>Show differences</h3><p>Against the base layer, or against another workspace.</p></div><span class="tag">DIFF</span></article>
+          <article class="cmd-row"><span class="meta">ws keep</span><div><h3>Save as a layer</h3><p>Commit workspace changes into an immutable, content-addressed layer.</p></div><span class="tag">SAVE</span></article>
+          <article class="cmd-row"><span class="meta">ws drop</span><div><h3>Delete a workspace</h3><p>Removes the workspace and all uncommitted changes. Base layer is untouched.</p></div><span class="tag">DELETE</span></article>
+          <article class="cmd-row"><span class="meta">ws graph</span><div><h3>Print the graph</h3><p>Full layer + workspace DAG, or a single workspace's provenance tree.</p></div><span class="tag">INSPECT</span></article>
+          <article class="cmd-row"><span class="meta">ws status</span><div><h3>Show all workspaces</h3><p>Table with dirty/clean state, layer, message. <code>--json</code> for agents.</p></div><span class="tag">INSPECT</span></article>
+          <article class="cmd-row"><span class="meta">ws path</span><div><h3>Print workspace path</h3><p>Resolve a workspace name to its filesystem path. No hardcoding.</p></div><span class="tag">PATH</span></article>
+          <article class="cmd-row"><span class="meta">ws export</span><div><h3>Export workspace</h3><p>Copy workspace contents to an external directory for git commit.</p></div><span class="tag">EXPORT</span></article>
+          <article class="cmd-row"><span class="meta">ws layer copy</span><div><h3>Copy from a layer</h3><p>Copy a file from an immutable layer to a destination path.</p></div><span class="tag">COPY</span></article>
+          <article class="cmd-row"><span class="meta">--json</span><div><h3>Machine-readable output</h3><p>JSON flag on <code>get</code>, <code>keep</code>, <code>status</code>, <code>layer ls</code> for agent coordination.</p></div><span class="tag">JSON</span></article>
         </div>
       </div>
     </section>
 
-
-    <!-- ── Section: Multi-agent ──────────────────────────────────────── -->
+    <!-- Multi-agent -->
     <section class="section" id="multi-agent">
-      <div class="container hero-split">
+      <div class="container grid-2">
         <div>
           <p class="eyebrow">MULTI-AGENT</p>
-          <h2>10 scenarios for<br>parallel agents</h2>
-          <p class="lead" style="margin-top: 20px;">Plan-execute-consolidate. Parallel code review. Bug hunts. Iterative refactoring with rollback. The built-in skill teaches agents how to use <code>ws</code> for coordination — with <code>--json</code> output, <code>ws status</code> for cross-agent visibility, and <code>ws layer copy</code> for merging.</p>
-          <div style="margin-top: 28px;">
+          <h2>100 scenarios for<br>parallel agents</h2>
+          <p class="lead" style="margin-top: 16px;">Plan-execute-consolidate. Parallel hypotheses. Bug hunts. Diamond merges. Iterative refactoring with rollback. The built-in skill teaches agents how to use <code>ws</code> for coordination — with <code>--json</code> output, <code>ws status</code> for cross-agent visibility, and <code>ws layer copy</code> for merging.</p>
+          <div style="margin-top: 24px;">
             <a class="btn btn-secondary" href="demo.html">See the demo</a>
             <a class="btn btn-ghost btn-arrow" href="https://github.com/weslien/ws/blob/main/assets/skill/ws-workspace-graph/SKILL.md">Read the skill</a>
           </div>
         </div>
-        <div class="terminal-window">
-          <div class="terminal-header">ws — plan-execute-consolidate</div>
+        <div class="terminal">
+          <div class="terminal-head">ws — plan-execute-consolidate</div>
           <div class="terminal-body"><span class="prompt">$</span> ws get dir:/codebase --name=agent-1 --json
 <span class="out">{"workspace":"agent-1","formed_from":"a3f4d..."}</span>
 
@@ -643,23 +296,23 @@ ws:feature-b <span class="active">[active]</span>
       </div>
     </section>
 
-    <!-- ── Section 5: CTA strip ─────────────────────────────────────── -->
+    <!-- Install -->
     <section class="section" id="install" style="text-align: center;">
       <div class="container" style="max-width: 600px;">
         <h2>Install</h2>
         <p class="lead" style="margin: 16px auto 32px;">Open source, MIT licensed. Requires Go 1.23+.</p>
         <a class="btn btn-primary" href="https://github.com/weslien/ws#install">Install ws</a>
-        <div class="code-block" style="margin-top: 32px; text-align: left; max-width: 480px; margin-inline: auto;">
-<span class="prompt">$</span> curl -sSL https://raw.githubusercontent.com/weslien/ws/main/install.sh | bash
-<span class="out">installed ws v0.6.0 → ~/.local/bin/ws</span>
+        <div class="terminal" style="margin-top: 32px; text-align: left; max-width: 480px; margin-inline: auto;">
+          <div class="terminal-body"><span class="prompt">$</span> curl -sSL https://raw.githubusercontent.com/weslien/ws/main/install.sh | bash
+<span class="out">installed ws v0.7.0 → ~/.local/bin/ws</span>
 <span class="prompt">$</span> ws skill   <span class="out"># install the agent skill</span></div>
+        </div>
       </div>
     </section>
-
   </main>
 
   <footer class="pagefoot">
-    <div class="container row-between">
+    <div class="container">
       <span>© ws · 2026 · MIT License</span>
       <span class="meta">github.com/weslien/ws</span>
     </div>

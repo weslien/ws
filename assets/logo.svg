@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 320">
+  <defs>
+    <linearGradient id="loop-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00E1FF" />
+      <stop offset="100%" stop-color="#FF00FB" />
+    </linearGradient>
+    <style>
+      .text-tagline { font-family: monospace; font-size: 14px; fill: #E0E0E0; letter-spacing: 1px; }
+    </style>
+  </defs>
+
+  <!-- Dark Background -->
+  <rect width="100%" height="100%" fill="#1A1A1A"/>
+
+  <!-- Continuous W-S Loop -->
+  <path d="
+    M 140 110
+    L 175 190
+    L 210 110
+    L 245 190
+    C 260 120, 285 110, 315 110
+    C 350 110, 355 145, 315 150
+    C 275 155, 275 195, 315 195
+    C 345 195, 360 175, 355 160
+  " fill="none" stroke="url(#loop-gradient)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Typography -->
+  <!-- Removed the middle WS text element and its style definition -->
+  <!-- Positioned tagline to take its place vertically to minimize gap -->
+  <text x="250" y="260" text-anchor="middle" class="text-tagline">Workspace Graphs for Git</text>
+</svg>

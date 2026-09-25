@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.svg" width="240" alt="ws — Workspace Graphs for Git" />
+</p>
+
 # ws
 
 **Fast, lightweight workspace graphs for Git repositories.**
