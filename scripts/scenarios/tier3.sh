@@ -53,7 +53,7 @@ echo "a" > "$($WS path t52a)/src/a.go"
 L52=$($WS keep t52a --json 2>/dev/null | JQ_LAYER)
 # GC may run from other tiers; just verify the layer dir exists right after keep
 # (don't run gc first)
-t_cond 52 "GC preserves" "edge.gc_preserves" "-d ~/.ws/layers/$L52"
+t_cond 52 "GC preserves" "edge.gc_preserves" "[ -d ~/.ws/layers/$L52 ]"
 $WS drop t52a 2>/dev/null || true
 
 # 53: Symlink

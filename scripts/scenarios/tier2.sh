@@ -103,8 +103,8 @@ $WS drop h31b 2>/dev/null || true
 # 32: Force re-branch
 $WS get layer:"$BASE_LAYER" --name=f32 >/dev/null 2>&1
 echo "v1" > "$($WS path f32)/src/v.go"
-t 32 "Force re-branch" "coord.force_rebranch" $WS get ws:f32 --name=f32 --force
-$WS drop f32 2>/dev/null || true
+t 32 "Force re-branch" "coord.force_rebranch" $WS get ws:f32 --name=f32b --force
+$WS drop f32 f32b 2>/dev/null || true
 
 # 33: Layer copy merge
 $WS get layer:"$BASE_LAYER" --name=lc33s >/dev/null 2>&1

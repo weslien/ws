@@ -215,7 +215,7 @@ echo 'review' > "$($WS path er98)/src/review.go"
 mkdir -p /tmp/ws-e98-t5
 $WS export er98 /tmp/ws-e98-t5 >/dev/null 2>&1
 sleep 1
-t_cond 98 "Export for review" "strategy.export_review" "-f /tmp/ws-e98-t5/src/review.go"
+t_cond 98 "Export for review" "strategy.export_review" "[ -f /tmp/ws-e98-t5/src/review.go ]"
 rm -rf /tmp/ws-e98-t5
 $WS drop er98 2>/dev/null || true
 
@@ -235,7 +235,7 @@ $WS keep fl99-final --message="final" >/dev/null 2>&1
 mkdir -p /tmp/ws-e99-t5
 $WS export fl99-final /tmp/ws-e99-t5 >/dev/null 2>&1
 sleep 1
-t_cond 99 "Full lifecycle" "strategy.full_lifecycle" "-f /tmp/ws-e99-t5/src/a.go && -f /tmp/ws-e99-t5/src/b.go"
+t_cond 99 "Full lifecycle" "strategy.full_lifecycle" "[ -f /tmp/ws-e99-t5/src/a.go ] && [ -f /tmp/ws-e99-t5/src/b.go ]"
 rm -rf /tmp/ws-e99-t5
 $WS drop fl99-seed fl99-a fl99-b fl99-final 2>/dev/null || true
 

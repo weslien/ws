@@ -93,8 +93,8 @@ S68=$($WS keep fo68-seed --json 2>/dev/null | JQ_LAYER)
 for i in $(seq 1 10); do
   $WS get layer:"$S68" --name="fo68-$i" >/dev/null 2>&1
 done
-sleep 2
-t_cond 68 "Fan-out 10" "stress.fanout_10" "[ \$($WS status | grep -c 'fo68-') -eq 10 ]"
+$WS drop fo68-seed 2>/dev/null || true
+t_cond 68 "Fan-out 10" "stress.fanout_10" "[ $($WS status | grep -c 'fo68-') -eq 10 ]"
 $WS drop fo68-seed fo68-{1..10} 2>/dev/null || true
 
 # 69: GC after 20 workspaces
