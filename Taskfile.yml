@@ -38,14 +38,14 @@ tasks:
     desc: Run end-to-end lifecycle test
     deps: [build]
     cmds:
-      - ./scripts/e2e-test.sh
+      - bash scripts/e2e-test.sh
     env:
       WS_BIN: ./ws
 
   e2e-installed:
     desc: Run e2e test against installed ws binary
     cmds:
-      - scripts/e2e-test.sh
+      - bash scripts/e2e-test.sh
     env:
       WS_BIN: ws
 
@@ -81,6 +81,6 @@ tasks:
     desc: Run 100-scenario test suite (5 parallel tiers)
     deps: [build]
     cmds:
-      - ./scripts/scenario-test.sh
+      - bash scripts/scenario-test.sh
     env:
       WS: ./ws
