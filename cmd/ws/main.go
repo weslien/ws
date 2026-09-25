@@ -255,16 +255,24 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 		die("unknown source type: %s", source)
 	}
 
-	// Atomically register the workspace to prevent concurrent races
-	store.UpdateWorkspaces(func(m map[string]storage.WorkspaceMeta) {
-		m[name] = storage.WorkspaceMeta{
-			Name:       name,
-			Source:     source,
-			FormedFrom: formedFrom,
-			State:      "active",
-			CreatedAt:  time.Now().Format(time.RFC3339),
-		}
-	})
+	// Atomically register the workspace to prevent concurrent races.
+	// Hold the global lock so GC can't delete the base layer between
+	// Fork and workspace registration.
+	gLock, err := store.GlobalLock()
+	if err != nil {
+		die("get: lock: %v", err)
+	}
+
+	wsMap := store.ReadWorkspaces()
+	wsMap[name] = storage.WorkspaceMeta{
+		Name:       name,
+		Source:     source,
+		FormedFrom: formedFrom,
+		State:      "active",
+		CreatedAt:  time.Now().Format(time.RFC3339),
+	}
+	store.WriteWorkspaces(wsMap)
+	gLock.Close()
 	if jsonOut {
 		type getResult struct {
 			Workspace  string `json:"workspace"`
@@ -368,6 +376,16 @@ func cmdKeep(args []string, be backend.Backender, store *storage.Store, log back
 	// Mount before commit (overlayfs may need it)
 	_ = be.Mount(name, w.FormedFrom, log)
 
+	// Hold the global lock for the entire commit + metadata update cycle.
+	// This prevents GC (which also holds the global lock) from deleting
+	// the freshly-created layer between Commit() and the metadata update
+	// that references it.
+	gLock, err := store.GlobalLock()
+	if err != nil {
+		die("keep: lock: %v", err)
+	}
+	defer gLock.Close()
+
 	hash, err := be.Commit(name, log)
 	if err != nil {
 		die("commit: %v", err)
@@ -378,23 +396,21 @@ func cmdKeep(args []string, be backend.Backender, store *storage.Store, log back
 
 	layers := store.ReadLayers()
 	if _, exists := layers[hash]; !exists {
-		store.UpdateLayers(func(m map[string]storage.LayerMeta) {
-			m[hash] = storage.LayerMeta{
-				Hash:        hash,
-				Parent:      w.FormedFrom,
-				Message:     msg,
-				CreatedAt:   time.Now().Format(time.RFC3339),
-				CommittedBy: name,
-			}
-		})
+		layers[hash] = storage.LayerMeta{
+			Hash:        hash,
+			Parent:      w.FormedFrom,
+			Message:     msg,
+			CreatedAt:   time.Now().Format(time.RFC3339),
+			CommittedBy: name,
+		}
+		store.WriteLayers(layers)
 	}
 
 	// Update workspace to point to the new layer as its basis
-	store.UpdateWorkspaces(func(m map[string]storage.WorkspaceMeta) {
-		w := m[name]
-		w.FormedFrom = hash
-		m[name] = w
-	})
+	wsMap := store.ReadWorkspaces()
+	w.FormedFrom = hash
+	wsMap[name] = w
+	store.WriteWorkspaces(wsMap)
 	if jsonOut {
 		type keepResult struct {
 			Workspace string `json:"workspace"`
@@ -411,6 +427,14 @@ func cmdDrop(args []string, be backend.Backender, store *storage.Store, log back
 		printHelp("drop")
 		os.Exit(1)
 	}
+	// Hold the global lock for the entire drop cycle so GC can't
+	// race with workspace removal.
+	gLock, err := store.GlobalLock()
+	if err != nil {
+		die("drop: lock: %v", err)
+	}
+	defer gLock.Close()
+
 	dropped := 0
 	var droppedNames []string
 	for _, name := range args[1:] {
@@ -424,10 +448,9 @@ func cmdDrop(args []string, be backend.Backender, store *storage.Store, log back
 			log.Error("destroy %s: %v", name, err)
 			continue
 		}
-		// Atomically remove from metadata
-		store.UpdateWorkspaces(func(m map[string]storage.WorkspaceMeta) {
-			delete(m, name)
-		})
+		// Remove from metadata (already holding global lock)
+		delete(workspaces, name)
+		store.WriteWorkspaces(workspaces)
 		dropped++
 		droppedNames = append(droppedNames, name)
 	}
