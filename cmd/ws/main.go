@@ -45,7 +45,11 @@ func main() {
 	}
 
 	home, _ := os.UserHomeDir()
-	root := filepath.Join(home, ".ws")
+	wsRoot := filepath.Join(home, ".ws")
+	if env := os.Getenv("WS_HOME"); env != "" {
+		wsRoot = env
+	}
+	root := wsRoot
 
 	be := backend.NewAuto()
 	logger := &consoleLogger{}
@@ -283,7 +287,7 @@ func cmdRun(args []string, be backend.Backender, store *storage.Store, log backe
 	if _, ok := workspaces[name]; !ok {
 		die("workspace %q not found", name)
 	}
-	wsDir := filepath.Join(os.Getenv("HOME"), ".ws", "workspaces", name)
+	wsDir := filepath.Join(store.Root(), "workspaces", name)
 	cmd := args[3]
 	cmdArgs := args[4:]
 
@@ -709,7 +713,7 @@ func cmdLayer(args []string, be backend.Backender, store *storage.Store, log bac
 		removed := 0
 		for hash := range layers {
 			if !referenced[hash] {
-				os.RemoveAll(filepath.Join(os.Getenv("HOME"), ".ws", "layers", hash))
+				os.RemoveAll(filepath.Join(store.Root(), "layers", hash))
 				delete(layers, hash)
 				removed++
 			}

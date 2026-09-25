@@ -4,6 +4,8 @@
 set -e
 
 WS_BIN="${WS_BIN:-ws}"
+WS_HOME_ENV="${WS_HOME:-$HOME/.ws}"
+export WS_HOME="$WS_HOME_ENV"
 TESTREPO="/tmp/ws-test-repo-$$"
 PASS=0
 FAIL=0
@@ -17,7 +19,7 @@ cleanup() {
     "$WS_BIN" drop "$ws" 2>/dev/null || true
   done
   rm -rf "$TESTREPO" 2>/dev/null || true
-  rm -rf ~/.ws 2>/dev/null || true
+  rm -rf "$WS_HOME" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -41,14 +43,14 @@ git -C "$TESTREPO" commit -m "init" --no-gpg-sign 2>/dev/null
 ok "test repo created"
 
 section "Fresh workspace"
-rm -rf ~/.ws
+rm -rf "$WS_HOME"
 "$WS_BIN" get base:"$TESTREPO" --name=agent-1 && ok "get base:" || fail "get base:"
 
 section "Run inside workspace"
 "$WS_BIN" run agent-1 -- cat package.json && ok "run" || fail "run"
 
 section "Mutate + diff"
-echo '{"name":"test","version":"1.0.0"}' > "$HOME/.ws/workspaces/agent-1/package.json"
+echo '{"name":"test","version":"1.0.0"}' > "$WS_HOME/workspaces/agent-1/package.json"
 "$WS_BIN" diff agent-1 && ok "diff" || fail "diff"
 
 section "Keep"
@@ -58,7 +60,7 @@ echo "  layer: $LAYER_A"
 
 section "Branch from live workspace"
 "$WS_BIN" get ws:agent-1 --name=agent-2 && ok "get ws:" || fail "get ws:"
-echo '{"name":"test","version":"2.0.0"}' > "$HOME/.ws/workspaces/agent-2/package.json"
+echo '{"name":"test","version":"2.0.0"}' > "$WS_HOME/workspaces/agent-2/package.json"
 "$WS_BIN" keep agent-2 --message="bumped to 2.0.0" && ok "keep agent-2" || fail "keep agent-2"
 LAYER_B=$("$WS_BIN" layer ls | grep "bumped to 2.0.0" | awk '{print $1}')
 echo "  layer: $LAYER_B"
@@ -87,7 +89,7 @@ BASE=$("$WS_BIN" layer ls | grep "base:" | head -1 | awk '{print $1}')
 "$WS_BIN" layer cat "$LAYER_A" package.json > /tmp/merge-ours.json
 "$WS_BIN" layer cat "$LAYER_B" package.json > /tmp/merge-theirs.json
 "$WS_BIN" layer cat "$BASE" package.json > /tmp/merge-base.json
-cp /tmp/merge-theirs.json "$HOME/.ws/workspaces/merger/package.json"
+cp /tmp/merge-theirs.json "$WS_HOME/workspaces/merger/package.json"
 "$WS_BIN" keep merger --message="manual merge" && ok "keep merger" || fail "keep merger"
 
 section "Cleanup"
