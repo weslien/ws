@@ -818,6 +818,9 @@ func cmdLayer(args []string, be backend.Backender, store *storage.Store, log bac
 			die("layer %q not found", hash)
 		}
 		layerDir := filepath.Join(store.Root(), "layers", hash)
+		if _, err := os.Stat(layerDir); err != nil {
+			die("layer %s directory missing: %v", hash, err)
+		}
 		filepath.Walk(layerDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() {
 				return nil

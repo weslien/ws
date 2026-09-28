@@ -93,6 +93,10 @@ func (b *CopyBackend) Commit(name string, _ OperationLogger) (string, error) {
 		if err := copyDir(wsDir, layerDir); err != nil {
 			return "", fmt.Errorf("copyDir %s -> %s: %w", wsDir, layerDir, err)
 		}
+		// Verify the layer directory was actually populated
+		if _, err := os.Stat(layerDir); err != nil {
+			return "", fmt.Errorf("layer dir missing after copyDir: %w", err)
+		}
 	}
 	return hash, nil
 }

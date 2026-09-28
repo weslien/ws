@@ -75,11 +75,11 @@ t 55 "Empty dir" "edge.empty_dir" $WS keep t55 --message="empty_dir"
 $WS drop t55 2>/dev/null || true
 
 # 56: Nested dir
-$WS get layer:"$BASE_LAYER" --name=t56 >/dev/null 2>&1
+$WS get layer:"$BASE_LAYER" --name=t56 2>/dev/null
 mkdir -p "$($WS path t56)/src/deep/nested/path"
 echo 'package nested' > "$($WS path t56)/src/deep/nested/path/file.go"
 L56=$($WS keep t56 --json 2>/dev/null | JQ_LAYER)
-t_cond 56 "Nested dir" "edge.nested_dir" "$WS layer files $L56 | grep -q 'deep/nested/path/file.go'"
+t_cond 56 "Nested dir" "edge.nested_dir" "[ -n '$L56' ] && $WS layer files $L56 2>/dev/null | grep -q 'deep/nested/path/file.go'"
 $WS drop t56 2>/dev/null || true
 
 # 57: File deletion

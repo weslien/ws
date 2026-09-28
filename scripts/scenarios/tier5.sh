@@ -97,7 +97,7 @@ $WS get layer:"$L1" --name=cb87-2a >/dev/null 2>&1
 echo 'a2' > "$($WS path cb87-2a)/src/a2.go"
 $WS get layer:"$L1" --name=cb87-2b >/dev/null 2>&1
 echo 'b2' > "$($WS path cb87-2b)/src/b2.go"
-t_cond 87 "Chain+branch" "strategy.chain_branch" "$WS graph | grep -q cb87-2a && $WS graph | grep -q cb87-2b"
+t_cond 87 "Chain+branch" "strategy.chain_branch" "$WS graph 2>/dev/null | grep -q cb87-2a && $WS graph 2>/dev/null | grep -q cb87-2b"
 $WS drop cb87-0 cb87-1 cb87-2a cb87-2b 2>/dev/null || true
 
 # 88: Selective merge 3
