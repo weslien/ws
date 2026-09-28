@@ -105,9 +105,9 @@ EOF
   fi
   # Ensure base layer exists — keep _base workspace persistent (don't drop)
   if ! $WS status 2>/dev/null | grep -q '_base'; then
-    # Show errors during setup — don't suppress
-    if ! $WS get base:"$DEMO" --name=_base 2>&1; then
-      echo "FATAL: $WS get base:\"$DEMO\" --name=_base failed" >&2
+    # Use --force in case another tier created _base between our check and get
+    if ! $WS get base:"$DEMO" --name=_base --force 2>&1; then
+      echo "FATAL: $WS get base:\"$DEMO\" --name=_base --force failed" >&2
       rmdir "$LOCK_DIR" 2>/dev/null || true
       return 1
     fi

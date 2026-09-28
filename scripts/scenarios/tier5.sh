@@ -184,18 +184,18 @@ t 94 "Fork-merge-rebase" "strategy.fork_merge_rebase" $WS keep fmr94-rebased --m
 $WS drop fmr94-base fmr94-feature fmr94-rebased 2>/dev/null || true
 
 # 95: Sparse
-$WS get layer:"$BASE_LAYER" --name=sp95 >/dev/null 2>&1
+$WS get layer:"$BASE_LAYER" --name=sp95 2>/dev/null
 echo 'sparse' > "$($WS path sp95)/src/sparse.go"
 L95=$($WS keep sp95 --json 2>/dev/null | JQ_LAYER)
-t_cond 95 "Sparse" "strategy.sparse" "$WS layer files $L95 | grep -q sparse"
+t_cond 95 "Sparse" "strategy.sparse" "[ -n '$L95' ] && $WS layer files $L95 2>/dev/null | grep -q sparse"
 $WS drop sp95 2>/dev/null || true
 
 # 96: Audit
-$WS get layer:"$BASE_LAYER" --name=au96 >/dev/null 2>&1
+$WS get layer:"$BASE_LAYER" --name=au96 2>/dev/null
 echo 'audit' > "$($WS path au96)/src/audit.go"
 L96=$($WS keep au96 --json 2>/dev/null | JQ_LAYER)
 t 96 "Audit show" "strategy.audit" $WS layer show "$L96"
-t_cond 96b "Audit files" "strategy.audit" "$WS layer files $L96 | grep -q audit.go"
+t_cond 96b "Audit files" "strategy.audit" "[ -n '$L96' ] && $WS layer files $L96 2>/dev/null | grep -q audit.go"
 $WS drop au96 2>/dev/null || true
 
 # 97: Cleanup

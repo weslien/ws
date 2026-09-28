@@ -17,10 +17,10 @@ $WS drop a21a a21b 2>/dev/null || true
 $WS get layer:"$BASE_LAYER" --name=seed22 >/dev/null 2>&1
 echo "x" > "$($WS path seed22)/src/x.go"
 S22=$($WS keep seed22 --json 2>/dev/null | JQ_LAYER)
-$WS get layer:"$S22" --name=a22a >/dev/null 2>&1
-$WS get layer:"$S22" --name=a22b >/dev/null 2>&1
-$WS get layer:"$S22" --name=a22c >/dev/null 2>&1
-t_cond 22 "Three from seed" "coord.parallel_seed" "$WS status | grep -q a22a && $WS status | grep -q a22c"
+$WS get layer:"$S22" --name=a22a 2>/dev/null
+$WS get layer:"$S22" --name=a22b 2>/dev/null
+$WS get layer:"$S22" --name=a22c 2>/dev/null
+t_cond 22 "Three from seed" "coord.parallel_seed" "$WS status 2>/dev/null | grep -q a22a && $WS status 2>/dev/null | grep -q a22c"
 $WS drop seed22 a22a a22b a22c 2>/dev/null || true
 
 # 23: Branch from agent
