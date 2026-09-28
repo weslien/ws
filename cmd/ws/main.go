@@ -394,6 +394,12 @@ func cmdKeep(args []string, be backend.Backender, store *storage.Store, log back
 		die("commit produced empty hash")
 	}
 
+	// Verify the layer directory was actually written
+	layerDir := filepath.Join(store.Root(), "layers", hash)
+	if _, err := os.Stat(layerDir); err != nil {
+		die("layer directory missing after commit: %v (hash=%s)", err, hash)
+	}
+
 	layers := store.ReadLayers()
 	if _, exists := layers[hash]; !exists {
 		layers[hash] = storage.LayerMeta{

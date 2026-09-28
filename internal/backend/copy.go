@@ -91,7 +91,7 @@ func (b *CopyBackend) Commit(name string, _ OperationLogger) (string, error) {
 	layerDir := filepath.Join(b.layersDir(), hash)
 	if _, err := os.Stat(layerDir); os.IsNotExist(err) {
 		if err := copyDir(wsDir, layerDir); err != nil {
-			return "", err
+			return "", fmt.Errorf("copyDir %s -> %s: %w", wsDir, layerDir, err)
 		}
 	}
 	return hash, nil
