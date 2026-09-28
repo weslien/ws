@@ -241,47 +241,32 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 		die("unknown source type: %s", source)
 	}
 
-	// Acquire the global lock ONLY for the metadata registration —
-	// not during the slow I/O (clone, fork, copyDir). This lets
-	// concurrent get calls do their I/O in parallel and only
-	// serialize on the fast read-modify-write of the JSON indexes.
-	// Register both layer (if base:/dir:) and workspace atomically.
-	gLock, gErr := store.GlobalLock()
-	if gErr != nil {
-		die("get: lock: %v", gErr)
-	}
-	defer gLock.Close()
-
-	// For base: and dir: sources, register the layer in layers.json
-	// (read-modify-write under lock to prevent lost updates).
+	// Per-entity file writes — no lock needed. Different workspaces and
+	// layers write to different files. atomicWrite (temp + rename) is
+	// crash-safe. No read-modify-write on a shared index.
+	
+	// For base: and dir: sources, register the layer (if not already known).
 	if strings.HasPrefix(source, "base:") || strings.HasPrefix(source, "dir:") {
-		layers := store.ReadLayers()
-		if _, exists := layers[formedFrom]; !exists {
-			if strings.HasPrefix(source, "base:") {
-				layers[formedFrom] = storage.LayerMeta{
-					Hash:    formedFrom,
-					Message: fmt.Sprintf("base:%s", source[5:]),
-				}
-			} else {
-				layers[formedFrom] = storage.LayerMeta{
-					Hash:    formedFrom,
-					Message: fmt.Sprintf("dir:%s", source[4:]),
-				}
+		if _, exists := store.ReadLayer(formedFrom); !exists {
+			msg := fmt.Sprintf("base:%s", source[5:])
+			if strings.HasPrefix(source, "dir:") {
+				msg = fmt.Sprintf("dir:%s", source[4:])
 			}
-			store.WriteLayers(layers)
+			store.WriteLayer(formedFrom, storage.LayerMeta{
+				Hash:    formedFrom,
+				Message: msg,
+			})
 		}
 	}
 
-	// Register the workspace in metadata
-	wsMap := store.ReadWorkspaces()
-	wsMap[name] = storage.WorkspaceMeta{
+	// Register the workspace — write to its own file, no shared index.
+	store.WriteWorkspace(name, storage.WorkspaceMeta{
 		Name:       name,
 		Source:     source,
 		FormedFrom: formedFrom,
 		State:      "active",
 		CreatedAt:  time.Now().Format(time.RFC3339),
-	}
-	store.WriteWorkspaces(wsMap)
+	})
 	if jsonOut {
 		type getResult struct {
 			Workspace  string `json:"workspace"`
@@ -385,47 +370,48 @@ func cmdKeep(args []string, be backend.Backender, store *storage.Store, log back
 	// Mount before commit (overlayfs may need it)
 	_ = be.Mount(name, w.FormedFrom, log)
 
-	// Hold the global lock for the entire commit + metadata update cycle.
-	// This prevents GC (which also holds the global lock) from deleting
-	// the freshly-created layer between Commit() and the metadata update
-	// that references it.
+	// Hold the global lock during Commit to prevent GC from deleting
+	// the new layer between its creation and metadata registration.
+	// With per-entity files, the metadata write is lock-free, but
+	// we still need the lock around Commit to prevent GC races.
 	gLock, err := store.GlobalLock()
 	if err != nil {
 		die("keep: lock: %v", err)
 	}
-	defer gLock.Close()
 
 	hash, err := be.Commit(name, log)
 	if err != nil {
+		gLock.Close()
 		die("commit: %v", err)
 	}
 	if hash == "" {
+		gLock.Close()
 		die("commit produced empty hash")
 	}
 
 	// Verify the layer directory was actually written
 	layerDir := filepath.Join(store.Root(), "layers", hash)
 	if _, err := os.Stat(layerDir); err != nil {
+		gLock.Close()
 		die("layer directory missing after commit: %v (hash=%s)", err, hash)
 	}
 
-	layers := store.ReadLayers()
-	if _, exists := layers[hash]; !exists {
-		layers[hash] = storage.LayerMeta{
+	// Write the layer metadata to its own file (lock-free)
+	if _, exists := store.ReadLayer(hash); !exists {
+		store.WriteLayer(hash, storage.LayerMeta{
 			Hash:        hash,
 			Parent:      w.FormedFrom,
 			Message:     msg,
 			CreatedAt:   time.Now().Format(time.RFC3339),
 			CommittedBy: name,
-		}
-		store.WriteLayers(layers)
+		})
 	}
 
-	// Update workspace to point to the new layer as its basis
-	wsMap := store.ReadWorkspaces()
+	// Update the workspace to point to the new layer (write to its own file)
 	w.FormedFrom = hash
-	wsMap[name] = w
-	store.WriteWorkspaces(wsMap)
+	store.WriteWorkspace(name, w)
+
+	gLock.Close()
 	if jsonOut {
 		type keepResult struct {
 			Workspace string `json:"workspace"`
@@ -442,20 +428,12 @@ func cmdDrop(args []string, be backend.Backender, store *storage.Store, log back
 		printHelp("drop")
 		os.Exit(1)
 	}
-	// Hold the global lock for the entire drop cycle so GC can't
-	// race with workspace removal.
-	gLock, err := store.GlobalLock()
-	if err != nil {
-		die("drop: lock: %v", err)
-	}
-	defer gLock.Close()
 
 	dropped := 0
 	var droppedNames []string
 	for _, name := range args[1:] {
-		// Check existence first
-		workspaces := store.ReadWorkspaces()
-		if _, ok := workspaces[name]; !ok {
+		// Check existence
+		if _, ok := store.ReadWorkspace(name); !ok {
 			log.Error("workspace %q not found", name)
 			continue
 		}
@@ -463,9 +441,8 @@ func cmdDrop(args []string, be backend.Backender, store *storage.Store, log back
 			log.Error("destroy %s: %v", name, err)
 			continue
 		}
-		// Remove from metadata (already holding global lock)
-		delete(workspaces, name)
-		store.WriteWorkspaces(workspaces)
+		// Remove the workspace metadata file (per-entity, no shared index)
+		store.DeleteWorkspace(name)
 		dropped++
 		droppedNames = append(droppedNames, name)
 	}
@@ -760,11 +737,12 @@ func cmdLayer(args []string, be backend.Backender, store *storage.Store, log bac
 		for hash := range layers {
 			if !referenced[hash] {
 				os.RemoveAll(filepath.Join(store.Root(), "layers", hash))
-				delete(layers, hash)
+				store.DeleteLayer(hash) // remove per-entity meta file
 				removed++
 			}
 		}
-		store.WriteLayers(layers)
+		// Also remove legacy monolithic files (migrated)
+		os.Remove(store.LayersFile())
 		fmt.Printf("gc: removed %d unreferenced layers\n", removed)
 	case "diff":
 		if len(args) < 4 {
@@ -874,8 +852,7 @@ func cmdPath(args []string, store *storage.Store) {
 		os.Exit(1)
 	}
 	name := args[1]
-	workspaces := store.ReadWorkspaces()
-	if _, ok := workspaces[name]; !ok {
+	if _, ok := store.ReadWorkspace(name); !ok {
 		die("workspace %q not found", name)
 	}
 	fmt.Println(filepath.Join(store.Root(), "workspaces", name))
