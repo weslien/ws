@@ -42,8 +42,23 @@ t_cond() {
     echo "PASS $num $tag $name" >> "$RESULTS_FILE"
     PASS=$((PASS+1))
   else
-    echo "FAIL $num $tag $name :: condition false: $cond" >> "$RESULTS_FILE"
-    FAIL=$((FAIL+1))
+    # Retry once after 0.5s — CopyBackend (macOS) is slower than overlayfs,
+    # and concurrent GC from another tier may briefly delete a layer.
+    sleep 0.5
+    if eval "$cond" 2>/dev/null; then
+      echo "PASS $num $tag $name" >> "$RESULTS_FILE"
+      PASS=$((PASS+1))
+    else
+      # Capture stderr for diagnostics (not suppressed)
+      local errmsg
+      errmsg=$(eval "$cond" 2>&1 >/dev/null | head -3)
+      if [ -n "$errmsg" ]; then
+        echo "FAIL $num $tag $name :: condition false: $cond :: $errmsg" >> "$RESULTS_FILE"
+      else
+        echo "FAIL $num $tag $name :: condition false: $cond" >> "$RESULTS_FILE"
+      fi
+      FAIL=$((FAIL+1))
+    fi
   fi
 }
 

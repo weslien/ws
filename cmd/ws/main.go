@@ -135,18 +135,6 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 		die("--name required")
 	}
 
-	// Acquire the global lock for the ENTIRE get operation — from
-	// layer registration through workspace registration. This prevents
-	// concurrent get/keep/drop/gc operations from racing on the shared
-	// meta files (layers.json, workspaces.json). Without this, two
-	// concurrent `ws get base:` calls would both read layers.json, both
-	// add their layer, both write — last writer wins, losing entries.
-	gLock, gErr := store.GlobalLock()
-	if gErr != nil {
-		die("get: lock: %v", gErr)
-	}
-	defer gLock.Close()
-
 	workspaces := store.ReadWorkspaces()
 	if _, ok := workspaces[name]; ok {
 		if !force {
@@ -211,15 +199,6 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 		if tmpDir != "" {
 			defer os.RemoveAll(tmpDir)
 		}
-		layers := store.ReadLayers()
-		if _, exists := layers[hash]; !exists {
-			log.Log("created layer %s", hash)
-			layers[hash] = storage.LayerMeta{
-				Hash:    hash,
-				Message: fmt.Sprintf("base:%s#%s", repo, ref),
-			}
-			store.WriteLayers(layers)
-		}
 		if err := be.Fork(hash, name, log); err != nil {
 			die("fork from cloned layer: %v", err)
 		}
@@ -231,9 +210,8 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 			die("directory %q not accessible: %v", dirPath, err)
 		}
 		hash := be.LayerHash(dirPath)
-		layers := store.ReadLayers()
-		if _, exists := layers[hash]; !exists {
-			layerDir := filepath.Join(store.Root(), "layers", hash)
+		layerDir := filepath.Join(store.Root(), "layers", hash)
+		if _, err := os.Stat(layerDir); os.IsNotExist(err) {
 			if err := os.MkdirAll(layerDir, 0755); err != nil {
 				die("create layer dir: %v", err)
 			}
@@ -253,11 +231,6 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 			}
 			cmd.Wait()
 			log.Log("created layer %s", hash)
-			layers[hash] = storage.LayerMeta{
-				Hash:    hash,
-				Message: fmt.Sprintf("dir:%s", dirPath),
-			}
-			store.WriteLayers(layers)
 		}
 		if err := be.Fork(hash, name, log); err != nil {
 			die("fork from directory layer: %v", err)
@@ -268,7 +241,38 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 		die("unknown source type: %s", source)
 	}
 
-	// Register the workspace in metadata (already holding global lock)
+	// Acquire the global lock ONLY for the metadata registration —
+	// not during the slow I/O (clone, fork, copyDir). This lets
+	// concurrent get calls do their I/O in parallel and only
+	// serialize on the fast read-modify-write of the JSON indexes.
+	// Register both layer (if base:/dir:) and workspace atomically.
+	gLock, gErr := store.GlobalLock()
+	if gErr != nil {
+		die("get: lock: %v", gErr)
+	}
+	defer gLock.Close()
+
+	// For base: and dir: sources, register the layer in layers.json
+	// (read-modify-write under lock to prevent lost updates).
+	if strings.HasPrefix(source, "base:") || strings.HasPrefix(source, "dir:") {
+		layers := store.ReadLayers()
+		if _, exists := layers[formedFrom]; !exists {
+			if strings.HasPrefix(source, "base:") {
+				layers[formedFrom] = storage.LayerMeta{
+					Hash:    formedFrom,
+					Message: fmt.Sprintf("base:%s", source[5:]),
+				}
+			} else {
+				layers[formedFrom] = storage.LayerMeta{
+					Hash:    formedFrom,
+					Message: fmt.Sprintf("dir:%s", source[4:]),
+				}
+			}
+			store.WriteLayers(layers)
+		}
+	}
+
+	// Register the workspace in metadata
 	wsMap := store.ReadWorkspaces()
 	wsMap[name] = storage.WorkspaceMeta{
 		Name:       name,

@@ -8,9 +8,9 @@ ensure_setup || { echo "T2: setup failed"; exit 1; }
 echo "T2: starting"
 
 # 21: Two agents same base
-$WS get layer:"$BASE_LAYER" --name=a21a >/dev/null 2>&1
-$WS get layer:"$BASE_LAYER" --name=a21b >/dev/null 2>&1
-t_cond 21 "Two agents" "coord.parallel_same_base" "$WS status | grep -q a21a && $WS status | grep -q a21b"
+$WS get layer:"$BASE_LAYER" --name=a21a 2>/dev/null
+$WS get layer:"$BASE_LAYER" --name=a21b 2>/dev/null
+t_cond 21 "Two agents" "coord.parallel_same_base" "$WS status 2>/dev/null | grep -q a21a && $WS status 2>/dev/null | grep -q a21b"
 $WS drop a21a a21b 2>/dev/null || true
 
 # 22: Three agents from seed
