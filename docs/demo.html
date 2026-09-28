@@ -443,8 +443,8 @@
       <div class="container">
         <div class="reveal" style="text-align: center; margin-bottom: 40px;">
           <p class="eyebrow">BATTLE TESTED</p>
-          <h2>100 scenarios, <span class="grad-text">100 pass</span></h2>
-          <p class="lead" style="margin-inline: auto; margin-top: 12px;">5 tiers, 20 scenarios each, run in parallel against a shared store. Every scenario passes sequentially. One concurrency bug found and fixed (v0.7.0).</p>
+          <h2>100 scenarios, <span class="grad-text">101 pass</span></h2>
+          <p class="lead" style="margin-inline: auto; margin-top: 12px;">5 tiers, 20+ scenarios each, run in parallel against a shared store. Every scenario passes on macOS and Linux. Concurrency bugs found and fixed through v0.8.0.</p>
         </div>
 
         <div class="reveal big-stat" style="justify-content: center;">
@@ -453,15 +453,15 @@
             <div class="big-stat-lbl">Scenarios</div>
           </div>
           <div class="big-stat-item">
-            <div class="big-stat-val" data-count="100" data-suffix="/100">0</div>
+            <div class="big-stat-val" data-count="101" data-suffix="/101">0</div>
             <div class="big-stat-lbl">Pass (sequential)</div>
           </div>
           <div class="big-stat-item">
-            <div class="big-stat-val" data-count="96" data-suffix="/100">0</div>
+            <div class="big-stat-val" data-count="101" data-suffix="/101">0</div>
             <div class="big-stat-lbl">Pass (parallel)</div>
           </div>
           <div class="big-stat-item">
-            <div class="big-stat-val" data-count="7">0</div>
+            <div class="big-stat-val" data-count="9">0</div>
             <div class="big-stat-lbl">Bugs fixed</div>
           </div>
         </div>
@@ -498,9 +498,11 @@
               <tr><td class="endpoint">v0.6.7</td><td>Symlinks crash <code>ws keep</code></td><td>Use os.Symlink instead of ReadFile</td></tr>
               <tr><td class="endpoint">v0.6.7</td><td><code>ws get layer:""</code> silently empty</td><td>Validate hash non-empty + exists</td></tr>
               <tr><td class="endpoint">v0.7.0</td><td>GC cross-file race (no lock)</td><td>GlobalLock for entire GC cycle</td></tr>
+              <tr><td class="endpoint">v0.8.0</td><td>Layer metadata lost in concurrent get</td><td>GlobalLock for read-modify-write of layers.json</td></tr>
+              <tr><td class="endpoint">v0.8.0</td><td>GC deletes layer between keep &amp; check</td><td>layer files/cat check filesystem first</td></tr>
             </tbody>
           </table>
-          <p style="margin-top: 16px; font-size: 13px; color: var(--muted);">5 parallel failures are test-level GC/timing races (one tier's GC deletes another tier's workspace mid-check). All 100 pass sequentially. <a href="https://github.com/weslien/ws/blob/main/docs/scenario-results.md" style="color: var(--accent-a);">Full results →</a></p>
+          <p style="margin-top: 16px; font-size: 13px; color: var(--muted);">101/101 pass on both macOS and Linux, sequentially and in parallel. 8 bugs found and fixed across v0.6.2–v0.8.0. <a href="https://github.com/weslien/ws/blob/main/docs/scenario-results.md" style="color: var(--accent-a);">Full results →</a></p>
         </div>
 
         <div class="reveal" style="margin-top: 40px;">

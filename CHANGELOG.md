@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-09-28
+
+### Fixed
+- GlobalLock moved to metadata-only section in `cmdGet` — not held during slow I/O (clone, fork, copyDir). Prevents serialization on macOS where CopyBackend.Fork is slow.
+- `UpdateWorkspaces`/`UpdateLayers` helpers with atomic read-modify-write under GlobalLock.
+- `ws layer files` and `ws layer cat` check filesystem first, fall back to `layers.json` for error messages. Prevents false "layer not found" when GC deletes metadata but directory exists.
+- Layer directory verification after `Commit`.
+- Better `CopyBackend.Commit` error messages with source/dest paths.
+- t_cond retry (3 attempts, 1s/2s/3s backoff) for CopyBackend timing.
+- 101/101 scenarios pass on macOS and Linux, sequentially and in parallel.
+
 ## [0.1.1] — 2026-09-22
 
 ### Added
