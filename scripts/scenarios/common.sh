@@ -49,11 +49,11 @@ t_cond() {
       echo "PASS $num $tag $name" >> "$RESULTS_FILE"
       PASS=$((PASS+1))
     else
-      # Capture stderr for diagnostics (not suppressed)
+      # Capture stderr for diagnostics — run WITHOUT 2>/dev/null suppression
       local errmsg
-      errmsg=$(eval "$cond" 2>&1 >/dev/null | head -3)
+      errmsg=$(eval "$cond" 2>&1 >/dev/null | head -5)
       if [ -n "$errmsg" ]; then
-        echo "FAIL $num $tag $name :: condition false: $cond :: $errmsg" >> "$RESULTS_FILE"
+        echo "FAIL $num $tag $name :: condition false: $cond :: ERR: $errmsg" >> "$RESULTS_FILE"
       else
         echo "FAIL $num $tag $name :: condition false: $cond" >> "$RESULTS_FILE"
       fi
