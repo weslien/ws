@@ -797,13 +797,14 @@ func cmdLayer(args []string, be backend.Backender, store *storage.Store, log bac
 		}
 		hash := strings.TrimPrefix(args[2], "layer:")
 		relPath := args[3]
-		layers := store.ReadLayers()
-		if _, ok := layers[hash]; !ok {
-			die("layer %q not found", hash)
-		}
 		fullPath := filepath.Join(store.Root(), "layers", hash, relPath)
 		data, err := os.ReadFile(fullPath)
 		if err != nil {
+			// Check if the hash is in layers.json for a better error message
+			layers := store.ReadLayers()
+			if _, ok := layers[hash]; !ok {
+				die("layer %q not found", hash)
+			}
 			die("read: %v", err)
 		}
 		os.Stdout.Write(data)
@@ -822,12 +823,13 @@ func cmdLayer(args []string, be backend.Backender, store *storage.Store, log bac
 			die("usage: ws layer files <hash>")
 		}
 		hash := strings.TrimPrefix(args[2], "layer:")
-		layers := store.ReadLayers()
-		if _, ok := layers[hash]; !ok {
-			die("layer %q not found", hash)
-		}
 		layerDir := filepath.Join(store.Root(), "layers", hash)
 		if _, err := os.Stat(layerDir); err != nil {
+			// Check if the hash is in layers.json for a better error message
+			layers := store.ReadLayers()
+			if _, ok := layers[hash]; !ok {
+				die("layer %q not found", hash)
+			}
 			die("layer %s directory missing: %v", hash, err)
 		}
 		filepath.Walk(layerDir, func(path string, info os.FileInfo, err error) error {

@@ -42,23 +42,26 @@ t_cond() {
     echo "PASS $num $tag $name" >> "$RESULTS_FILE"
     PASS=$((PASS+1))
   else
-    # Retry once after 0.5s — CopyBackend (macOS) is slower than overlayfs,
+    # Retry up to 3 times — CopyBackend (macOS) is slower than overlayfs,
     # and concurrent GC from another tier may briefly delete a layer.
-    sleep 0.5
-    if eval "$cond" 2>/dev/null; then
-      echo "PASS $num $tag $name" >> "$RESULTS_FILE"
-      PASS=$((PASS+1))
-    else
-      # Capture stderr for diagnostics — run WITHOUT 2>/dev/null suppression
-      local errmsg
-      errmsg=$(eval "$cond" 2>&1 >/dev/null | head -5)
-      if [ -n "$errmsg" ]; then
-        echo "FAIL $num $tag $name :: condition false: $cond :: ERR: $errmsg" >> "$RESULTS_FILE"
-      else
-        echo "FAIL $num $tag $name :: condition false: $cond" >> "$RESULTS_FILE"
+    local retry
+    for retry in 1 2 3; do
+      sleep $retry   # 1s, 2s, 3s backoff
+      if eval "$cond" 2>/dev/null; then
+        echo "PASS $num $tag $name" >> "$RESULTS_FILE"
+        PASS=$((PASS+1))
+        return
       fi
-      FAIL=$((FAIL+1))
+    done
+    # Final failure — capture stderr for diagnostics
+    local errmsg
+    errmsg=$(eval "$cond" 2>&1 >/dev/null | head -5)
+    if [ -n "$errmsg" ]; then
+      echo "FAIL $num $tag $name :: condition false: $cond :: ERR: $errmsg" >> "$RESULTS_FILE"
+    else
+      echo "FAIL $num $tag $name :: condition false: $cond" >> "$RESULTS_FILE"
     fi
+    FAIL=$((FAIL+1))
   fi
 }
 
