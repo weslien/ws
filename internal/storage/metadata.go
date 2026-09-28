@@ -12,7 +12,7 @@ type LayerMeta struct {
 	Hash        string   `json:"hash"`
 	Parent      string   `json:"parent,omitempty"`
 	Basis       []string `json:"basis,omitempty"`
-	Message     string  `json:"message,omitempty"`
+	Message     string   `json:"message,omitempty"`
 	CreatedAt   string   `json:"created_at"`
 	CommittedBy string   `json:"committed_by,omitempty"`
 }
@@ -27,7 +27,9 @@ type WorkspaceMeta struct {
 }
 
 // Store reads/writes JSON metadata from a root directory.
-// All writes are protected by file locks to prevent concurrent corruption.
+// ALL reads and writes are serialized through a single global lock
+// (~/.ws/meta/.lock) to prevent concurrent processes from racing
+// on the shared JSON index files (layers.json, workspaces.json).
 type Store struct {
 	root string
 }
@@ -40,13 +42,23 @@ func (s *Store) layersFile() string {
 	return filepath.Join(s.metaDir(), "layers.json")
 }
 func (s *Store) workspacesFile() string {
+	_ = os.MkdirAll(s.metaDir(), 0755)
 	return filepath.Join(s.metaDir(), "workspaces.json")
 }
 
-// lockFile acquires an exclusive flock on the metadata file, returning the
-// file handle (caller must Close to release the lock).
-func lockFile(path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+// globalLockFile returns the path to the single global metadata lock.
+// ALL metadata operations (reads AND writes) must hold this lock to
+// prevent cross-file races and lost-update races when multiple
+// processes (agents, GC, tests) access the same ~/.ws store.
+func (s *Store) globalLockFile() string {
+	_ = os.MkdirAll(s.metaDir(), 0755)
+	return filepath.Join(s.metaDir(), ".lock")
+}
+
+// GlobalLock acquires an exclusive lock on the global metadata lock file.
+// Caller must Close the returned file handle to release the lock.
+func (s *Store) GlobalLock() (*os.File, error) {
+	f, err := os.OpenFile(s.globalLockFile(), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -57,22 +69,7 @@ func lockFile(path string) (*os.File, error) {
 	return f, nil
 }
 
-// globalLockFile returns the path to the single global metadata lock.
-// All metadata operations (reads and writes) should hold this lock to
-// prevent cross-file races (e.g. GC reading workspaces while modifying layers).
-func (s *Store) globalLockFile() string {
-	_ = os.MkdirAll(s.metaDir(), 0755)
-	return filepath.Join(s.metaDir(), ".lock")
-}
-
-// GlobalLock acquires an exclusive lock on the global metadata lock file.
-// Caller must Close the returned file handle to release the lock.
-func (s *Store) GlobalLock() (*os.File, error) {
-	return lockFile(s.globalLockFile())
-}
-
 // atomicWrite writes data to path atomically: write to temp file, then rename.
-// The lockFile handle must be held by the caller during this operation.
 func atomicWrite(path string, data []byte) error {
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
@@ -81,6 +78,7 @@ func atomicWrite(path string, data []byte) error {
 	return os.Rename(tmp, path)
 }
 
+// ReadLayers reads the layer index. Caller should hold GlobalLock.
 func (s *Store) ReadLayers() map[string]LayerMeta {
 	data, _ := os.ReadFile(s.layersFile())
 	if len(data) == 0 {
@@ -91,14 +89,9 @@ func (s *Store) ReadLayers() map[string]LayerMeta {
 	return m
 }
 
+// WriteLayers writes the layer index. Caller should hold GlobalLock.
 func (s *Store) WriteLayers(m map[string]LayerMeta) error {
 	data, _ := json.MarshalIndent(m, "", "  ")
-	f, err := lockFile(s.layersFile())
-	if err != nil {
-		// Fallback: write without lock if locking fails
-		return os.WriteFile(s.layersFile(), data, 0644)
-	}
-	defer f.Close()
 	return atomicWrite(s.layersFile(), data)
 }
 
@@ -106,6 +99,7 @@ func (s *Store) WorkspacesFile() string {
 	return s.workspacesFile()
 }
 
+// ReadWorkspaces reads the workspace index. Caller should hold GlobalLock.
 func (s *Store) ReadWorkspaces() map[string]WorkspaceMeta {
 	data, _ := os.ReadFile(s.workspacesFile())
 	if len(data) == 0 {
@@ -116,63 +110,46 @@ func (s *Store) ReadWorkspaces() map[string]WorkspaceMeta {
 	return m
 }
 
+// WriteWorkspaces writes the workspace index. Caller should hold GlobalLock.
 func (s *Store) WriteWorkspaces(m map[string]WorkspaceMeta) error {
 	data, _ := json.MarshalIndent(m, "", "  ")
-	f, err := lockFile(s.workspacesFile())
-	if err != nil {
-		return os.WriteFile(s.workspacesFile(), data, 0644)
-	}
-	defer f.Close()
 	return atomicWrite(s.workspacesFile(), data)
 }
 
-// UpdateWorkspaces acquires a lock, reads the current workspaces, calls fn
-// to modify the map, and writes it back atomically. This prevents lost-update
-// races when multiple processes modify workspaces concurrently.
+// UpdateWorkspaces acquires the global lock, reads the current workspaces,
+// calls fn to modify the map, and writes it back atomically.
 func (s *Store) UpdateWorkspaces(fn func(m map[string]WorkspaceMeta)) error {
-	path := s.workspacesFile()
-	_ = os.MkdirAll(s.metaDir(), 0755)
-	f, err := lockFile(path)
+	gLock, err := s.GlobalLock()
 	if err != nil {
 		// Fallback: read-modify-write without lock
 		m := s.ReadWorkspaces()
 		fn(m)
 		data, _ := json.MarshalIndent(m, "", "  ")
-		return os.WriteFile(path, data, 0644)
+		return os.WriteFile(s.workspacesFile(), data, 0644)
 	}
-	defer f.Close()
+	defer gLock.Close()
 
-	// Read current state while holding the lock
-	data, err := os.ReadFile(path)
-	m := map[string]WorkspaceMeta{}
-	if len(data) > 0 {
-		json.Unmarshal(data, &m)
-	}
+	m := s.ReadWorkspaces()
 	fn(m)
-	out, _ := json.MarshalIndent(m, "", "  ")
-	return atomicWrite(path, out)
+	data, _ := json.MarshalIndent(m, "", "  ")
+	return atomicWrite(s.workspacesFile(), data)
 }
 
-// UpdateLayers acquires a lock, reads the current layers, calls fn
-// to modify the map, and writes it back atomically.
+// UpdateLayers acquires the global lock, reads the current layers,
+// calls fn to modify the map, and writes it back atomically.
 func (s *Store) UpdateLayers(fn func(m map[string]LayerMeta)) error {
-	path := s.layersFile()
-	_ = os.MkdirAll(s.metaDir(), 0755)
-	f, err := lockFile(path)
+	gLock, err := s.GlobalLock()
 	if err != nil {
+		// Fallback: read-modify-write without lock
 		m := s.ReadLayers()
 		fn(m)
 		data, _ := json.MarshalIndent(m, "", "  ")
-		return os.WriteFile(path, data, 0644)
+		return os.WriteFile(s.layersFile(), data, 0644)
 	}
-	defer f.Close()
+	defer gLock.Close()
 
-	data, err := os.ReadFile(path)
-	m := map[string]LayerMeta{}
-	if len(data) > 0 {
-		json.Unmarshal(data, &m)
-	}
+	m := s.ReadLayers()
 	fn(m)
-	out, _ := json.MarshalIndent(m, "", "  ")
-	return atomicWrite(path, out)
+	data, _ := json.MarshalIndent(m, "", "  ")
+	return atomicWrite(s.layersFile(), data)
 }

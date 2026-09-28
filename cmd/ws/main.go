@@ -134,6 +134,19 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 	if name == "" {
 		die("--name required")
 	}
+
+	// Acquire the global lock for the ENTIRE get operation — from
+	// layer registration through workspace registration. This prevents
+	// concurrent get/keep/drop/gc operations from racing on the shared
+	// meta files (layers.json, workspaces.json). Without this, two
+	// concurrent `ws get base:` calls would both read layers.json, both
+	// add their layer, both write — last writer wins, losing entries.
+	gLock, gErr := store.GlobalLock()
+	if gErr != nil {
+		die("get: lock: %v", gErr)
+	}
+	defer gLock.Close()
+
 	workspaces := store.ReadWorkspaces()
 	if _, ok := workspaces[name]; ok {
 		if !force {
@@ -255,14 +268,7 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 		die("unknown source type: %s", source)
 	}
 
-	// Atomically register the workspace to prevent concurrent races.
-	// Hold the global lock so GC can't delete the base layer between
-	// Fork and workspace registration.
-	gLock, err := store.GlobalLock()
-	if err != nil {
-		die("get: lock: %v", err)
-	}
-
+	// Register the workspace in metadata (already holding global lock)
 	wsMap := store.ReadWorkspaces()
 	wsMap[name] = storage.WorkspaceMeta{
 		Name:       name,
@@ -272,7 +278,6 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 		CreatedAt:  time.Now().Format(time.RFC3339),
 	}
 	store.WriteWorkspaces(wsMap)
-	gLock.Close()
 	if jsonOut {
 		type getResult struct {
 			Workspace  string `json:"workspace"`
