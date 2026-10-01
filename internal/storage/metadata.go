@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 )
 
 // LayerMeta is the JSON representation of an immutable layer.
@@ -35,12 +34,13 @@ type WorkspaceMeta struct {
 // a consistent snapshot. Writes use temp-then-rename for crash safety.
 //
 // ~/.ws/meta/
-//   workspaces/
-//     w1.json
-//     w2.json
-//   layers/
-//     <hash>.json
-//     <hash>.json
+//
+//	workspaces/
+//	  w1.json
+//	  w2.json
+//	layers/
+//	  <hash>.json
+//	  <hash>.json
 //
 // The only operation that needs a lock is GC (to prevent new layers from
 // being created during the reachability scan). Normal get/keep/drop/write
@@ -50,8 +50,8 @@ type Store struct {
 }
 
 func NewStore(root string) *Store { return &Store{root: root} }
-func (s *Store) Root() string      { return s.root }
-func (s *Store) metaDir() string   { return filepath.Join(s.root, "meta") }
+func (s *Store) Root() string     { return s.root }
+func (s *Store) metaDir() string  { return filepath.Join(s.root, "meta") }
 func (s *Store) workspacesDir() string {
 	_ = os.MkdirAll(filepath.Join(s.metaDir(), "workspaces"), 0755)
 	return filepath.Join(s.metaDir(), "workspaces")
@@ -83,7 +83,7 @@ func (s *Store) GlobalLock() (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+	if err := lockFileExclusive(f); err != nil {
 		f.Close()
 		return nil, err
 	}
