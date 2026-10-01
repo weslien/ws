@@ -8,8 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"sort"
+	"strings"
 )
 
 // ---------- CopyBackend (generic, macOS-safe) ----------
@@ -18,8 +18,8 @@ type CopyBackend struct {
 	root string
 }
 
-func NewCopyBackend() *CopyBackend { return &CopyBackend{} }
-func (b *CopyBackend) Name() string  { return "copy" }
+func NewCopyBackend() *CopyBackend  { return &CopyBackend{} }
+func (b *CopyBackend) Name() string { return "copy" }
 
 func (b *CopyBackend) Init(root string) error {
 	b.root = root
@@ -31,10 +31,10 @@ func (b *CopyBackend) Init(root string) error {
 	return nil
 }
 
-func (b *CopyBackend) rootDir() string        { return b.root }
-func (b *CopyBackend) layersDir() string       { return filepath.Join(b.root, "layers") }
-func (b *CopyBackend) workspacesDir() string  { return filepath.Join(b.root, "workspaces") }
-func (b *CopyBackend) metaDir() string         { return filepath.Join(b.root, "meta") }
+func (b *CopyBackend) rootDir() string       { return b.root }
+func (b *CopyBackend) layersDir() string     { return filepath.Join(b.root, "layers") }
+func (b *CopyBackend) workspacesDir() string { return filepath.Join(b.root, "workspaces") }
+func (b *CopyBackend) metaDir() string       { return filepath.Join(b.root, "meta") }
 
 func (b *CopyBackend) Fork(srcHash string, dstName string, _ OperationLogger) error {
 	return copyDir(filepath.Join(b.layersDir(), srcHash), filepath.Join(b.workspacesDir(), dstName))
@@ -81,9 +81,11 @@ func (b *CopyBackend) CloneGitRepo(repo string, ref string, logger OperationLogg
 	return hash, tmpDir, nil
 }
 
-func (b *CopyBackend) Mount(string, string, OperationLogger) error   { return nil }
-func (b *CopyBackend) Unmount(string, OperationLogger) error        { return nil }
-func (b *CopyBackend) Destroy(name string, _ OperationLogger) error   { return os.RemoveAll(filepath.Join(b.workspacesDir(), name)) }
+func (b *CopyBackend) Mount(string, string, OperationLogger) error { return nil }
+func (b *CopyBackend) Unmount(string, OperationLogger) error       { return nil }
+func (b *CopyBackend) Destroy(name string, _ OperationLogger) error {
+	return os.RemoveAll(filepath.Join(b.workspacesDir(), name))
+}
 
 func (b *CopyBackend) Commit(name string, _ OperationLogger) (string, error) {
 	wsDir := filepath.Join(b.workspacesDir(), name)
