@@ -98,8 +98,10 @@ func main() {
 
 type consoleLogger struct{}
 
-func (c *consoleLogger) Log(format string, args ...any)   { fmt.Printf(format+"\n", args...) }
-func (c *consoleLogger) Error(format string, args ...any) { fmt.Fprintf(os.Stderr, format+"\n", args...) }
+func (c *consoleLogger) Log(format string, args ...any) { fmt.Printf(format+"\n", args...) }
+func (c *consoleLogger) Error(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+}
 
 // containsHelp returns true if any arg contains "help" or "--help".
 func containsHelp(args []string) bool {
@@ -244,7 +246,7 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 	// Per-entity file writes — no lock needed. Different workspaces and
 	// layers write to different files. atomicWrite (temp + rename) is
 	// crash-safe. No read-modify-write on a shared index.
-	
+
 	// For base: and dir: sources, register the layer (if not already known).
 	if strings.HasPrefix(source, "base:") || strings.HasPrefix(source, "dir:") {
 		if _, exists := store.ReadLayer(formedFrom); !exists {
@@ -281,7 +283,7 @@ func cmdGet(args []string, be backend.Backender, store *storage.Store, log backe
 
 func cmdRun(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
 	if len(args) < 4 || containsHelp(args) || args[2] != "--" {
-			printHelp("run")
+		printHelp("run")
 		os.Exit(1)
 	}
 	name := args[1]
@@ -289,12 +291,26 @@ func cmdRun(args []string, be backend.Backender, store *storage.Store, log backe
 	if _, ok := workspaces[name]; !ok {
 		die("workspace %q not found", name)
 	}
-	wsDir := filepath.Join(store.Root(), "workspaces", name)
-	cmd := args[3]
-	cmdArgs := args[4:]
 
 	// Mount if needed (overlayfs backend)
 	_ = be.Mount(name, workspaces[name].FormedFrom, log)
+
+	cmd := args[3]
+	cmdArgs := args[4:]
+
+	// Backends with their own execution environment (container VMs) run
+	// the command inside it; others run host-side in the workspace dir.
+	if ex, ok := be.(backend.Execer); ok {
+		if err := ex.Exec(name, append([]string{cmd}, cmdArgs...)); err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				os.Exit(exitErr.ExitCode())
+			}
+			die("run failed: %v (on the container backend, ws run executes inside the workspace's Linux VM — the binary must exist there)", err)
+		}
+		return
+	}
+
+	wsDir := filepath.Join(store.Root(), "workspaces", name)
 	c := exec.Command(cmd, cmdArgs...)
 	c.Dir = wsDir
 	c.Stdin = os.Stdin
@@ -310,7 +326,7 @@ func cmdRun(args []string, be backend.Backender, store *storage.Store, log backe
 
 func cmdDiff(args []string, be backend.Backender, store *storage.Store, log backend.OperationLogger) {
 	if len(args) < 2 || containsHelp(args) {
-			printHelp("diff")
+		printHelp("diff")
 		os.Exit(1)
 	}
 	nameA := args[1]
@@ -612,10 +628,17 @@ func cmdStatus(args []string, be backend.Backender, store *storage.Store, log ba
 		}
 
 		dirty := "?"
-		wsHash := be.LayerHash(filepath.Join(store.Root(), "workspaces", name))
+		var wsHash string
+		if wh, ok := be.(backend.WorkspaceHasher); ok {
+			// Backend hides content behind a VM: ask it (returns "?" if
+			// hashing is impossible — better an honest ? than a lie).
+			wsHash = wh.HashWorkspace(name)
+		} else {
+			wsHash = be.LayerHash(filepath.Join(store.Root(), "workspaces", name))
+		}
 		if wsHash == layerHash {
 			dirty = "no"
-		} else {
+		} else if wsHash != "?" {
 			dirty = "yes"
 		}
 
@@ -870,6 +893,13 @@ func cmdExport(args []string, be backend.Backender, store *storage.Store, log ba
 		die("workspace %q not found", name)
 	}
 	_ = be.Mount(name, workspaces[name].FormedFrom, log)
+	if ex, ok := be.(backend.Exporter); ok {
+		if err := ex.ExportWorkspace(name, dest, log); err != nil {
+			die("export: %v", err)
+		}
+		fmt.Printf("exported workspace %s to %s\n", name, dest)
+		return
+	}
 	wsDir := filepath.Join(store.Root(), "workspaces", name)
 	if err := os.MkdirAll(dest, 0755); err != nil {
 		die("create dest: %v", err)
@@ -982,8 +1012,8 @@ type selfUpdater struct {
 
 func newSelfUpdater() (*selfUpdater, error) {
 	return &selfUpdater{
-		repo:    "github.com/weslien/ws",
-		binName: "ws",
+		repo:      "github.com/weslien/ws",
+		binName:   "ws",
 		installer: "https://raw.githubusercontent.com/weslien/ws/main/install.sh",
 	}, nil
 }
