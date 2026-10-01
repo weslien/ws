@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-10-01
+
 ### Fixed
-- Docs: macOS story updated to match the shipped Apple `container` backend (auto-detect, per-workspace Linux VMs, host-visible workspace directories). README, `ws help get/agent/concepts/platform`, and usage text previously described macOS as "directory copies only". In-VM overlayfs is documented as planned, not active (see issue #1).
+- **macOS container backend: `container machine run` joins positional argv into one command line**, breaking every in-VM shell script (the Fork copy failed with a BusyBox tar usage dump + "tar: short read"). One-shot `argvJoinProbe` detects the exec semantics; in-VM scripts are POSIX-quoted (`quotePOSIX`) so they arrive as a single `sh -c` argument under both semantics. All in-VM invocations use the documented `--` separator and print the first machine-run command line to stderr (`WS_DEBUG=1` traces all). Verified end-to-end on macOS (Apple Container VM): fork → host-side `ws run` write → `ws keep` → `ws layer cat` round-trips.
+- **`ws keep` on the container backend silently produced empty layers**: Commit staged exports under `/tmp`, which is not visible inside the machine (only the host home is virtiofs-mounted). Staging moved to `~/.ws/tmp`.
+- **Windows builds broken** since the per-entity metadata refactor (and with them every Release run since v0.6.4): `syscall.Flock` does not exist on Windows. `GlobalLock` split into `lockFileExclusive` — flock on Unix, `LockFileEx` via `golang.org/x/sys/windows` on Windows. x/sys pinned to v0.30.0 (compatible with Go 1.23.4, no toolchain bump). No release published between v0.6.4 and v0.9.1 as a result.
+- Removed the never-functioning in-VM overlay mount from Fork. With quoting fixed it would have succeeded — and silently hidden host-side `ws run` writes from `ws keep` (execution runs on the Mac). In-VM overlayfs returns with in-VM execution routing (#1).
+
+### Changed
+- Docs: macOS story matches the shipped backend — per-workspace Linux VMs via Apple `container` (auto-detected), honest fork cost (VM boot + in-VM staging), in-VM overlayfs documented as planned with rationale (#1). Windows platform section corrected (release binaries, no "cross-compiles cleanly" claim); `dir:<path>` added to the README source-type table; 0.9.0 CHANGELOG entry backfilled.
 
 ## [0.9.0] — 2026-09-28
 
