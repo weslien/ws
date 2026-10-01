@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,13 +21,28 @@ import (
 //   - The machine auto-mounts the host home directory (default: rw), so ~/.ws
 //     is visible inside the VM at /Users/<user>/.ws.
 //   - On Fork the layer is copied into the machine's workspace area, then
-//     an overlayfs mount is attempted (layer=lower, machine-local upper).
-//   - If overlayfs mount fails the backend falls back to a plain directory copy.
+//     an overlayfs mount is attempted at Mount() time (layer=lower; upper on
+//     the shared ~/.ws so host writes and VM reads agree).
+//   - If the overlayfs mount fails the workspace silently stays a plain
+//     copy — degraded, but host and VM remain consistent.
+//
+// Exec semantics: 'container machine run' does not necessarily preserve
+// argv. Observed on container CLI 1.x: it joins the positional arguments
+// into one command line which the machine's shell then re-parses. A naive
+// ["sh","-c",script] therefore arrives as `sh -c tar ...` — the inner sh -c
+// receives only the first word, reproducing the BusyBox-usage-dump +
+// "tar: short read" failure reported on macOS. runScript probes the
+// semantics once and passes quotePOSIX(script) when joined, so the outer
+// shell parse yields exactly: sh -c '<script>'
 //
 // CLI reference: https://github.com/apple/container/blob/main/docs/command-reference.md
 type ContainerBackend struct {
 	root string
 	user string // host username, needed for paths inside the VM
+
+	probeMu    sync.Mutex
+	probeDone  bool
+	argvJoined bool // true = machine run joins positionals into one shell line
 }
 
 func NewContainerBackend() *ContainerBackend {
@@ -44,7 +60,7 @@ func (b *ContainerBackend) Init(root string) error {
 		return fmt.Errorf("'container' CLI not found in PATH; install from https://github.com/apple/container")
 	}
 	b.root = root
-	for _, d := range []string{"layers", "workspaces", "uppers", "workdirs", "meta"} {
+	for _, d := range []string{"layers", "workspaces", "uppers", "workdirs", "meta", "tmp"} {
 		if err := os.MkdirAll(filepath.Join(root, d), 0755); err != nil {
 			return err
 		}
@@ -52,15 +68,17 @@ func (b *ContainerBackend) Init(root string) error {
 	return nil
 }
 
-func (b *ContainerBackend) layersDir() string    { return filepath.Join(b.root, "layers") }
+func (b *ContainerBackend) layersDir() string     { return filepath.Join(b.root, "layers") }
 func (b *ContainerBackend) workspacesDir() string { return filepath.Join(b.root, "workspaces") }
 func (b *ContainerBackend) uppersDir() string     { return filepath.Join(b.root, "uppers") }
 func (b *ContainerBackend) workdirsDir() string   { return filepath.Join(b.root, "workdirs") }
+func (b *ContainerBackend) tmpDir() string        { return filepath.Join(b.root, "tmp") }
 
 func (b *ContainerBackend) machineName(ws string) string { return "ws-" + sanitizeContainerName(ws) }
 
 // hostPath converts a host absolute path to the path visible inside the
-// container machine (virtiofs home mount).
+// container machine (virtiofs home mount). Paths outside the host user's
+// home are NOT visible inside the VM — always stage under ~/.ws, not /tmp.
 func (b *ContainerBackend) hostPath(p string) string {
 	return filepath.Join("/Users", b.user, strings.TrimPrefix(p, os.Getenv("HOME")))
 }
@@ -74,8 +92,78 @@ func (b *ContainerBackend) machineDelete(mName string) {
 	exec.Command("container", "machine", "delete", mName).Run()
 }
 
+// argvJoinProbe distinguishes the two possible 'machine run' exec semantics:
+//
+//	argv preserved:  ['sh','-c','printf %s wsargvok'] -> prints "wsargvok"
+//	argv joined:    the machine runs -> sh -c printf %s wsargvok
+//	                i.e. `printf` with $0=%s $1=wsargvok -> prints nothing
+//
+// The result is cached for the lifetime of the process.
+func (b *ContainerBackend) argvJoinProbe(mName string) bool {
+	b.probeMu.Lock()
+	defer b.probeMu.Unlock()
+	if !b.probeDone {
+		out, err := b.machineRunOutput(mName, "sh", "-c", "printf %s wsargvok")
+		b.probeDone = true
+		b.argvJoined = !(err == nil && strings.TrimSpace(out) == "wsargvok")
+	}
+	return b.argvJoined
+}
+
+// runScript executes script inside the machine as one shell script, adapting
+// to the exec semantics detected by argvJoinProbe:
+//
+//	argv joined: pass ['sh','-c', quotePOSIX(script)] — after the CLI joins
+//	             and the machine shell re-parses, inner sh -c gets <script>
+//	             as ONE argument.
+//	argv kept:   pass ['sh','-c', script] directly.
+func (b *ContainerBackend) runScript(mName string, root bool, script string, stdin *os.File) error {
+	args := []string{"sh", "-c", script}
+	if b.argvJoinProbe(mName) {
+		args = []string{"sh", "-c", quotePOSIX(script)}
+	}
+	base := []string{"machine", "run", "-n", mName}
+	if root {
+		base = append(base, "--root")
+	}
+	full := append(append([]string{}, base...), args...)
+	cmd := exec.Command("container", full...)
+	if stdin != nil {
+		cmd.Stdin = stdin
+	}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// machineRunOutput runs a command capturing combined output. Used by the
+// argv probe; user-facing commands stream via runScript.
+func (b *ContainerBackend) machineRunOutput(mName string, args ...string) (string, error) {
+	cmdArgs := append([]string{"machine", "run", "-n", mName}, args...)
+	cmd := exec.Command("container", cmdArgs...)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+// machineExists reports whether the workspace's machine is present.
+func (b *ContainerBackend) machineExists(mName string) bool {
+	out, err := exec.Command("container", "machine", "list", "--format", "json").CombinedOutput()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(out), "\""+mName+"\"")
+}
+
 // Fork creates a new workspace by instantiating a container machine and
-// setting up overlayfs inside it.
+// staging the layer content into the workspace area inside the VM.
+//
+// The workspace is a shared directory (virtiofs home mount): host-side
+// `ws run` and VM-side Commit/Diff read and write the SAME files. There is
+// deliberately NO overlayfs mount here. A VM-side overlay with lower=layer
+// would shadow host-side writes (they land on the underlying directory,
+// bypassing the overlay), causing ws keep to silently drop them. Until ws
+// supports routing execution inside the VM, overlay mode would be a data
+// loss trap — see CONTAINER-INTEGRATION.md (Model A/B/C) for the roadmap.
 func (b *ContainerBackend) Fork(srcHash string, dstName string, logger OperationLogger) error {
 	layerDir := filepath.Join(b.layersDir(), srcHash)
 	wsDir := filepath.Join(b.workspacesDir(), dstName)
@@ -117,35 +205,22 @@ func (b *ContainerBackend) Fork(srcHash string, dstName string, logger Operation
 	// Paths inside the VM (home directory is auto-mounted by container).
 	layerInVM := b.hostPath(layerDir)
 	wsInVM := b.hostPath(wsDir)
-	upperInVM := b.hostPath(upperDir)
-	workInVM := b.hostPath(workDir)
 
 	// Stage 1: copy the layer into the workspace area inside the VM.
-	// We do this first so we have a fallback if overlay mount fails.
+	// The workspace directory is the substrate: plain-copy semantics,
+	// fully visible to both the host (virtiofs) and the VM.
 	logger.Log("copying layer into workspace %s...", dstName)
-	setup := fmt.Sprintf("tar -C %s -cf - . | tar -C %s -xf -", layerInVM, wsInVM)
-	if err := b.machineRun(mName, "sh", "-c", setup); err != nil {
+	setup := fmt.Sprintf("tar -C %s -cf - . | tar -C %s -xf -",
+		quotePOSIX(layerInVM), quotePOSIX(wsInVM))
+	if err := b.runScript(mName, false, setup, nil); err != nil {
 		b.machineDelete(mName)
 		return fmt.Errorf("initial copy into workspace: %w", err)
 	}
-
-	// Stage 2: attempt overlayfs mount.
-	// This requires root inside the VM. Use --root flag on machine run.
-	logger.Log("attempting overlayfs mount in %s...", mName)
-	mountCmd := fmt.Sprintf("mkdir -p %s %s && mount -t overlay overlay -o lowerdir=%s,upperdir=%s,workdir=%s %s",
-		upperInVM, workInVM, layerInVM, upperInVM, workInVM, wsInVM)
-	if err := b.machineRunRoot(mName, "sh", "-c", mountCmd); err != nil {
-		logger.Log("overlay mount failed: %v (falling back to plain copy)", err)
-		// Fallback: workspace is already the copied directory from Stage 1.
-		return nil
-	}
-
-	logger.Log("overlayfs active in machine %s", mName)
 	return nil
 }
 
 // ForkFromWorkspace snapshots the source workspace state into a new layer,
-// then Forks from that layer.
+// then forks from that layer.
 func (b *ContainerBackend) ForkFromWorkspace(srcName string, dstName string, logger OperationLogger) (string, error) {
 	logger.Log("snapshotting workspace %s...", srcName)
 	snapHash, err := b.Commit(srcName, logger)
@@ -166,48 +241,53 @@ func (b *ContainerBackend) CloneGitRepo(repo string, ref string, logger Operatio
 	return cb.CloneGitRepo(repo, ref, logger)
 }
 
-// Mount is a no-op because the machine itself is the mounted environment.
+// Mount is a no-op. The workspace is a shared directory (visible to both
+// host and VM); mounting an overlay VM-side would shadow host writes and
+// make ws keep silently drop them (see Fork). Overlay support returns with
+// in-VM execution routing.
 func (b *ContainerBackend) Mount(string, string, OperationLogger) error { return nil }
 
-// Unmount destroys the container machine.
-func (b *ContainerBackend) Unmount(name string, _ OperationLogger) error {
-	mName := b.machineName(name)
-	b.machineDelete(mName)
-	return nil
-}
+// Unmount is a no-op (nothing is mounted). The machine's lifecycle is
+// managed by Destroy.
+func (b *ContainerBackend) Unmount(string, OperationLogger) error { return nil }
 
-// Destroy removes the workspace's machine, upper, work, and mount dirs.
+// Destroy removes the workspace's machine and its host-side directories.
 func (b *ContainerBackend) Destroy(name string, log OperationLogger) error {
 	b.Unmount(name, log)
+	b.machineDelete(b.machineName(name))
 	for _, d := range []string{b.workspacesDir(), b.uppersDir(), b.workdirsDir()} {
 		os.RemoveAll(filepath.Join(d, name))
 	}
 	return nil
 }
 
-// Commit hashes the workspace content inside the VM and copies it to a host
-// layer directory.
+// Commit hashes the workspace content and copies it to a host layer.
+// The workspace is exported via a staging directory under ~/.ws/tmp (which
+// IS visible inside the VM via the home mount). The previous /tmp staging
+// silently produced empty layers: only the host home is mapped into the
+// machine, so hostPath() cannot map /tmp paths into the VM.
 func (b *ContainerBackend) Commit(name string, logger OperationLogger) (string, error) {
 	mName := b.machineName(name)
 	wsInVM := b.hostPath(filepath.Join(b.workspacesDir(), name))
 
-	// We compute the hash by copying the workspace out to a temp dir on the
-	// host and using the standard hashing.
-	tmpDir, err := os.MkdirTemp("", "ws-commit-*")
+	stage, err := os.MkdirTemp(b.tmpDir(), "commit-*")
 	if err != nil {
-		return "", fmt.Errorf("temp dir: %w", err)
+		return "", fmt.Errorf("staging dir: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer os.RemoveAll(stage)
 
+	stageInVM := b.hostPath(stage)
 	logger.Log("exporting workspace %s from machine %s...", name, mName)
-	if err := b.machineRun(mName, "sh", "-c", fmt.Sprintf("tar -C %s -cf - . | tar -C %s -xf -", wsInVM, b.hostPath(tmpDir))); err != nil {
+	export := fmt.Sprintf("tar -C %s -cf - . | tar -C %s -xf -",
+		quotePOSIX(wsInVM), quotePOSIX(stageInVM))
+	if err := b.runScript(mName, false, export, nil); err != nil {
 		return "", fmt.Errorf("export workspace from machine: %w", err)
 	}
 
-	hash := b.LayerHash(tmpDir)
+	hash := b.LayerHash(stage)
 	layerDir := filepath.Join(b.layersDir(), hash)
 	if _, err := os.Stat(layerDir); os.IsNotExist(err) {
-		if err := copyDir(tmpDir, layerDir); err != nil {
+		if err := copyDir(stage, layerDir); err != nil {
 			return "", err
 		}
 	}
@@ -218,8 +298,8 @@ func (b *ContainerBackend) LayerHash(dir string) string {
 	return NewCopyBackend().LayerHash(dir)
 }
 
-// Diff runs diff inside the machine via a single shell command and writes
-// output to w.
+// Diff writes the unified diff between the workspace and a target (another
+// workspace or a layer) by running diff inside the machine.
 func (b *ContainerBackend) Diff(wsA string, wsB string, layerB string, w io.Writer, _ OperationLogger) error {
 	mName := b.machineName(wsA)
 	wsAInVM := b.hostPath(filepath.Join(b.workspacesDir(), wsA))
@@ -231,34 +311,23 @@ func (b *ContainerBackend) Diff(wsA string, wsB string, layerB string, w io.Writ
 		targetInVM = b.hostPath(filepath.Join(b.layersDir(), layerB))
 	}
 
-	cmd := exec.Command("container", "machine", "run", "-n", mName, "diff", "-ruN", targetInVM, wsAInVM)
-	out, err := cmd.CombinedOutput()
-	w.Write(out)
+	script := fmt.Sprintf("diff -ruN %s %s", quotePOSIX(targetInVM), quotePOSIX(wsAInVM))
+	out, err := b.machineRunOutput(mName, "sh", "-c", b.scriptArg(mName, script))
 	if err != nil && len(out) == 0 {
 		return fmt.Errorf("diff in machine %s: %w", mName, err)
 	}
+	w.Write([]byte(out))
 	return nil
 }
 
-// machineRun runs a command inside a container machine as the host user.
-func (b *ContainerBackend) machineRun(name string, args ...string) error {
-	cmdArgs := append([]string{"machine", "run", "-n", name}, args...)
-	cmd := exec.Command("container", cmdArgs...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-// machineRunRoot runs a command inside a container machine as root.
-// Uses --root flag (documented in container machine run --help).
-func (b *ContainerBackend) machineRunRoot(name string, args ...string) error {
-	cmdArgs := append([]string{"machine", "run", "-n", name, "--root"}, args...)
-	cmd := exec.Command("container", cmdArgs...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+// scriptArg returns the inner sh -c argument adapted to the machine's exec
+// semantics: the raw script if argv is preserved, quotePOSIX(script) if the
+// CLI joins positionals (see runScript).
+func (b *ContainerBackend) scriptArg(mName string, script string) string {
+	if b.argvJoinProbe(mName) {
+		return quotePOSIX(script)
+	}
+	return script
 }
 
 // sanitizeContainerName makes a string safe for use as a container machine
