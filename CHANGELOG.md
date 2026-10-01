@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Installer: resolve "latest" from releases (the tags API is not semver-ordered, and tags exist for releases whose pipeline failed — v0.7.0–v0.9.0); verify prebuilt tarballs against the published `.sha256` asset; build from source at the release tag (never stamp `main` with a release version); report the installed binary's version by path, not PATH-resolved `ws`. wget fallback; README install section matches behavior.
+
 ## [0.9.1] — 2026-10-01
 
 ### Fixed
