@@ -117,6 +117,10 @@ func (b *ContainerBackend) argvJoinProbe(mName string) bool {
 //	             and the machine shell re-parses, inner sh -c gets <script>
 //	             as ONE argument.
 //	argv kept:   pass ['sh','-c', script] directly.
+//
+// The '--' separator ends the CLI's flag parsing, so a script that begins
+// with '-' can never be eaten as an option. WS_DEBUG=1 prints the full
+// machine-run invocation for troubleshooting.
 func (b *ContainerBackend) runScript(mName string, root bool, script string, stdin *os.File) error {
 	args := []string{"sh", "-c", script}
 	if b.argvJoinProbe(mName) {
@@ -126,15 +130,33 @@ func (b *ContainerBackend) runScript(mName string, root bool, script string, std
 	if root {
 		base = append(base, "--root")
 	}
+	base = append(base, "--")
 	full := append(append([]string{}, base...), args...)
+	if os.Getenv("WS_DEBUG") == "1" {
+		fmt.Fprintf(os.Stderr, "[ws debug] container %s\n", strings.Join(full, " "))
+	} else {
+		traceFirstRun.Do(func() {
+			fmt.Fprintf(os.Stderr, "[ws debug] container %s\n", strings.Join(full, " "))
+		})
+	}
 	cmd := exec.Command("container", full...)
 	if stdin != nil {
 		cmd.Stdin = stdin
 	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	err := cmd.Run()
+	if err != nil && os.Getenv("WS_DEBUG") == "1" {
+		fmt.Fprintf(os.Stderr, "[ws debug] machine run failed (exit=%v). Re-run manually:\n  container %s\n", err, strings.Join(full, " "))
+	}
+	return err
 }
+
+// traceFirstRun prints the FIRST machine-run invocation of the process to
+// stderr, always — so a failure trace (like the original BusyBox usage
+// dump) always shows at least one full command line without the user
+// needing to know about WS_DEBUG. WS_DEBUG=1 traces every invocation.
+var traceFirstRun sync.Once
 
 // machineRunOutput runs a command capturing combined output. Used by the
 // argv probe; user-facing commands stream via runScript.
