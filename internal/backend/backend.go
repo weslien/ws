@@ -11,18 +11,18 @@ type OperationLogger interface {
 // Workspace describes a mutable workspace backed by a specific backend.
 type Workspace struct {
 	Name       string
-	FormedFrom string        // layer hash this ws was forked from
-	Source     string        // e.g. layer:abc or ws:other
-	CreatedAt  string        // RFC3339
+	FormedFrom string // layer hash this ws was forked from
+	Source     string // e.g. layer:abc or ws:other
+	CreatedAt  string // RFC3339
 }
 
 // Layer describes an immutable, content-addressed directory.
 type Layer struct {
 	Hash        string
 	Parent      string
-	Basis       []string      // multi-lower for future unions
+	Basis       []string // multi-lower for future unions
 	Message     string
-	CreatedAt   string        // RFC3339
+	CreatedAt   string // RFC3339
 	CommittedBy string
 }
 

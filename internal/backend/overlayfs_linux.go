@@ -30,7 +30,7 @@ type OverlayfsBackend struct {
 }
 
 func NewOverlayfsBackend() *OverlayfsBackend { return &OverlayfsBackend{} }
-func (b *OverlayfsBackend) Name() string      { return "overlayfs" }
+func (b *OverlayfsBackend) Name() string     { return "overlayfs" }
 
 func (b *OverlayfsBackend) Init(root string) error {
 	b.root = root
@@ -42,10 +42,10 @@ func (b *OverlayfsBackend) Init(root string) error {
 	return nil
 }
 
-func (b *OverlayfsBackend) layersDir() string      { return filepath.Join(b.root, "layers") }
-func (b *OverlayfsBackend) workspacesDir() string    { return filepath.Join(b.root, "workspaces") }
-func (b *OverlayfsBackend) uppersDir() string       { return filepath.Join(b.root, "uppers") }
-func (b *OverlayfsBackend) workdirsDir() string     { return filepath.Join(b.root, "workdirs") }
+func (b *OverlayfsBackend) layersDir() string     { return filepath.Join(b.root, "layers") }
+func (b *OverlayfsBackend) workspacesDir() string { return filepath.Join(b.root, "workspaces") }
+func (b *OverlayfsBackend) uppersDir() string     { return filepath.Join(b.root, "uppers") }
+func (b *OverlayfsBackend) workdirsDir() string   { return filepath.Join(b.root, "workdirs") }
 
 func (b *OverlayfsBackend) Fork(srcHash string, dstName string, logger OperationLogger) error {
 	upper := filepath.Join(b.uppersDir(), dstName)
