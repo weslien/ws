@@ -39,9 +39,17 @@ EXAMPLES
 
 NOTES
   - Workspace names are arbitrary identifiers (letters, numbers, hyphens, underscores).
+    With the macOS container backend, the underlying 'container machine' names only
+    allow alphanumeric + hyphen; ws sanitizes the machine name automatically.
+    Prefer hyphens over underscores in workspace names on macOS.
   - Two workspaces cannot share the same name. If you try, ws aborts.
-  - On Linux, workspaces are overlayfs mounts (instant, zero-copy).
-  - On macOS, workspaces are directory copies (O(n) for size n).`,
+
+BACKENDS
+  - Linux: overlayfs mounts (instant, zero-copy).
+  - macOS: directory copies (O(n) for size n) by default. If Apple 'container'
+    (github.com/apple/container) is installed, ws auto-detects it and runs each
+    workspace in a lightweight Linux VM with real overlayfs instead.
+    To pick explicitly: WS_BACKEND=copy or WS_BACKEND=container.`,
 
 	"run": `ws run <workspace> -- <command> [args...]
 
@@ -120,7 +128,8 @@ WARNING
   This is DESTRUCTIVE. Any changes not kept are permanently lost.
 
 WHAT IT DOES
-  1. Unmounts the workspace (overlayfs on Linux, no-op on macOS).
+  1. Unmounts the workspace (overlayfs on Linux; container machine teardown on
+     macOS with the container backend; no-op for copies).
   2. Removes the workspace directory, upper directory, and work directory.
   3. Removes the workspace from the metadata graph.
   4. Does NOT delete layers referenced by the workspace (those are shared).
@@ -330,9 +339,14 @@ these are the canonical patterns for safe, composable work.
   ENVIRONMENT REQUIREMENTS
   ────────────────────────
   - Linux: fuse-overlayfs must be installed (apt install fuse-overlayfs).
-  - macOS: No additional deps for copy backend.
-           If container (github.com/apple/container) is installed, ws uses
-           lightweight Linux VMs automatically. Ensure 'container system start'.
+  - macOS: no additional deps by default (copy backend).
+           If Apple 'container' (github.com/apple/container) is installed, ws
+           auto-detects it and routes each workspace through a lightweight
+           Linux VM (real overlayfs). Prefer hyphens in workspace names on
+           macOS — 'container machine' identifiers do not allow underscores.
+           Override if needed: WS_BACKEND=copy (always directory copies) or
+           WS_BACKEND=container (require the VM backend; errors if the
+           container CLI is not installed).
 `
 
 var conceptsGuide = `CONCEPTS
@@ -378,8 +392,10 @@ Garbage Collection
 
 Platform Differences
   - Linux: overlayfs mounts provide copy-on-write isolation.
-  - macOS: directory copies provide isolation.
-  - Both expose the exact same CLI and graph model.
+  - macOS: Apple 'container' (github.com/apple/container) is auto-detected when
+    installed (macOS 26+, Apple Silicon): each workspace runs inside a
+    lightweight Linux VM with real overlayfs. Directory copies are the fallback.
+    Every platform exposes the exact same graph model.
 `
 
 var platformGuide = `PLATFORM BACKENDS
@@ -400,13 +416,19 @@ MACOS (default)
   No additional dependencies. Works on any macOS version.
 
 MACOS (with Apple Container)
-  Backend: container (Linux VMs with real overlayfs)
-  Fork cost: O(1) — copy-on-write inside a lightweight VM
+  Backend: container — each workspace is a lightweight Linux VM with real
+           overlayfs, via Apple 'container' (github.com/apple/container)
+  Fork cost: one VM boot per workspace plus a copy of the layer content into
+             the VM; subsequent writes are copy-on-write via overlayfs.
+             Layer contents are shared read-only on the host (~/.ws/layers)
+             and outside the VM, so identical layers are never stored twice.
   Requirements: macOS 26 (Tahoe) or later, Apple Silicon (M1+)
   Install:
     brew install container
     container system start   # prompts to install a Linux kernel on first run
-  ws auto-detects the container CLI and uses it automatically.
+  Once installed, ws auto-detects the container CLI and uses it automatically.
+  Prefer hyphens in workspace names — 'container machine' identifiers do not
+  allow underscores.
   Source: https://github.com/apple/container
 
 ENVIRONMENT VARIABLES
@@ -450,7 +472,7 @@ func printVersion() {
 const usageText = `ws — workspace graph CLI
 
 Managing mutable workspaces on immutable, content-addressed layers.
-Linux: overlayfs (COW). macOS: directory copies.
+Linux: overlayfs (COW). macOS: Apple Container VMs or directory copies.
 
 USAGE
   ws <command> [options]

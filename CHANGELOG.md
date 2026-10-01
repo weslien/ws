@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Docs: macOS story updated to match the shipped Apple `container` backend (auto-detect, per-workspace Linux VMs with real overlayfs, copy fallback). README, `ws help get/agent/concepts/platform`, and usage text previously described macOS as "directory copies only".
+
+## [0.9.0] — 2026-09-28
+
+### Changed
+- Refactor: per-entity metadata files (one JSON per workspace, one per layer) instead of monolithic `workspaces.json`/`layers.json` indexes. Eliminates the read-modify-write race; normal operations need no locking, only GC takes the global lock. Atomic writes (temp + rename) are crash-safe.
+
 ## [0.8.0] — 2026-09-28
 
 ### Fixed

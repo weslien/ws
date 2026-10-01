@@ -8,7 +8,7 @@
 
 `ws` creates **mutable workspaces** from **immutable layers** — think lightweight branching for entire working directories. Branch from another agent's workspace. Isolate to a clean base. Diff, commit, and garbage-collect — all without touching Git itself.
 
-On Linux, workspaces are [overlayfs](https://docs.kernel.org/filesystems/overlayfs.html) mounts (instant fork, zero-copy). On macOS, they use efficient directory copies. The **CLI and graph model are identical** on both platforms.
+On Linux, workspaces are [overlayfs](https://docs.kernel.org/filesystems/overlayfs.html) mounts (instant fork, zero-copy). On macOS, they use efficient directory copies — or, when [Apple Container](https://github.com/apple/container) is installed, lightweight Linux VMs with real overlayfs (auto-detected, no configuration needed). The **CLI and graph model are identical** on every platform.
 
 ```bash
 # Start from a repository
@@ -114,9 +114,9 @@ ws graph
 # → Workspaces:
 ```
 
-### macOS: Optional overlayfs via Apple Container
+### macOS: Real overlayfs via Apple Container
 
-On macOS, `ws` uses directory copies by default (O(n) fork cost). For zero-copy overlayfs (O(1) fork, same as Linux), install [Apple Container](https://github.com/apple/container):
+On macOS, `ws` uses efficient directory copies by default. For real overlayfs in a lightweight Linux VM, install [Apple Container](https://github.com/apple/container):
 
 ```bash
 brew install container
@@ -125,7 +125,17 @@ container system start   # first run prompts to install a Linux kernel
 
 Requirements: macOS 26 (Tahoe) or later, Apple Silicon (M1+).
 
-Once installed, `ws` auto-detects it and uses Linux VMs with real overlayfs. No configuration needed. To force copy backend: `WS_BACKEND=copy ws ...`
+With the CLI installed, `ws` auto-detects it and routes each new workspace through a Linux VM (`container machine`) with real overlayfs — the same graph model as Linux. No configuration needed.
+
+```bash
+WS_BACKEND=copy ws ...        # force directory copies (e.g. inside VMs-in-VMs)
+WS_BACKEND=container ws ...   # require the container backend (errors if not installed)
+```
+
+Notes:
+- Prefer hyphens in workspace names — `container machine` identifiers do not allow underscores (`ws` sanitizes them, but distinct names can collide: `bug_1` and `bug-1` both map to machine `ws-bug-1`).
+- First fork per machine boots a VM and copies the layer content into it; later writes are copy-on-write.
+- If the in-VM overlayfs mount fails, that workspace quietly falls back to a plain in-VM copy.
 
 ---
 
@@ -153,6 +163,7 @@ Git worktrees let you check out multiple branches into separate directories. `ws
 | `layer:<hash>` | Fork from an immutable layer |
 | `ws:<name>` | Branch from another workspace's current state (snapshot-first) |
 | `base:<repo>#<ref>` | Clone a git repo, create a layer from it, fork from that layer |
+| `dir:<path>` | Create a workspace from a local directory (no git repo needed) |
 
 ---
 
@@ -331,12 +342,12 @@ Layers are content-addressed by a SHA-256 truncated to 16 hex characters.
 ### macOS
 
 - By default, uses directory copies for all fork/branch operations (no kernel overlayfs available).
-- If Apple's [`container`](https://github.com/apple/container) is installed, automatically routes through lightweight Linux VMs with native overlayfs.
+- If Apple's [`container`](https://github.com/apple/container) is installed (macOS 26+, Apple Silicon), ws auto-detects it and runs each workspace in a lightweight Linux VM with native overlayfs (see "macOS: Real overlayfs via Apple Container" above).
 - No additional dependencies beyond Go (copy backend).
 
 ### Windows
 
-- Not currently supported. Contributions welcome.
+- Supported via the copy backend. Prebuilt binaries for Windows amd64 and arm64 are provided in each [GitHub Release](https://github.com/weslien/ws/releases); extract the `.tar.gz` for your architecture and add the directory to your `PATH`. Cross-compiles cleanly (`GOOS=windows go build ./...`).
 
 ---
 
