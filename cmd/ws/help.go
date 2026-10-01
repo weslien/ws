@@ -416,12 +416,11 @@ MACOS (default)
   No additional dependencies. Works on any macOS version.
 
 MACOS (with Apple Container)
-  Backend: container — each workspace is a lightweight Linux VM with real
-           overlayfs, via Apple 'container' (github.com/apple/container)
-  Fork cost: one VM boot per workspace plus a copy of the layer content into
-             the VM; subsequent writes are copy-on-write via overlayfs.
-             Layer contents are shared read-only on the host (~/.ws/layers)
-             and outside the VM, so identical layers are never stored twice.
+  Backend: container — each workspace is a lightweight Linux VM, via Apple
+           'container' (github.com/apple/container). File operations
+           (keep/diff/export) run inside the VM; the workspace directory
+           stays visible on the Mac via the shared home mount.
+  Fork cost: one VM boot plus an in-VM copy of the layer content.
   Requirements: macOS 26 (Tahoe) or later, Apple Silicon (M1+)
   Install:
     brew install container
@@ -429,6 +428,9 @@ MACOS (with Apple Container)
   Once installed, ws auto-detects the container CLI and uses it automatically.
   Prefer hyphens in workspace names — 'container machine' identifiers do not
   allow underscores.
+  Note: in-VM overlayfs is planned but not enabled yet (ws run executes on
+  the Mac; a VM-side overlay would hide host writes from keep). See
+  https://github.com/weslien/ws/issues/1
   Source: https://github.com/apple/container
 
 ENVIRONMENT VARIABLES

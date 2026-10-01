@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- Docs: macOS story updated to match the shipped Apple `container` backend (auto-detect, per-workspace Linux VMs with real overlayfs, copy fallback). README, `ws help get/agent/concepts/platform`, and usage text previously described macOS as "directory copies only".
+- Docs: macOS story updated to match the shipped Apple `container` backend (auto-detect, per-workspace Linux VMs, host-visible workspace directories). README, `ws help get/agent/concepts/platform`, and usage text previously described macOS as "directory copies only". In-VM overlayfs is documented as planned, not active (see issue #1).
 
 ## [0.9.0] — 2026-09-28
 
