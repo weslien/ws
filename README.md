@@ -55,9 +55,13 @@ ws:feature-b [active]
 curl -sSL https://raw.githubusercontent.com/weslien/ws/main/install.sh | bash
 ```
 
-Requires Go 1.23+ installed. If `go` is in your PATH the script will use `go install github.com/weslien/ws/cmd/ws@latest`. Otherwise it falls back to cloning and building from source.
+The installer tries, in order:
 
-The script installs to `/usr/local/bin` if writable, otherwise `~/.local/bin`. Make sure whichever you choose is in your `PATH`:
+1. **Prebuilt binary** from the latest GitHub release — checksum-verified against the published `.sha256` asset
+2. **Source build at the release tag** (needs `git` + `go` 1.23+) — version injected via ldflags
+3. **`go install`** as a last resort
+
+Overrides: `VERSION=vX.Y.Z` installs a specific release; `INSTALL_DIR=/path` changes the install location. Default location is `/usr/local/bin` if writable, otherwise `~/.local/bin` — make sure it's in your `PATH`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"  # if installed to ~/.local/bin
