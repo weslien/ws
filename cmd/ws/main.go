@@ -98,7 +98,10 @@ func main() {
 
 type consoleLogger struct{}
 
-func (c *consoleLogger) Log(format string, args ...any) { fmt.Printf(format+"\n", args...) }
+func (c *consoleLogger) Log(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+}
+
 func (c *consoleLogger) Error(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, format+"\n", args...)
 }

@@ -244,7 +244,7 @@ func (b *ContainerBackend) Fork(srcHash string, dstName string, logger Operation
 	if err := b.writeMode(dstName, "overlay", srcHash); err != nil {
 		return err
 	}
-	logger.Log("workspace %s in overlay mode (layer %s mounted read-only in-VM)", dstName, shortHash(srcHash))
+	logger.Log("workspace %s in overlay mode (layer %s mounts read-only in-VM on first use)", dstName, shortHash(srcHash))
 	return nil
 }
 

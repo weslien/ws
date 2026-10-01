@@ -109,9 +109,16 @@ func (b *ContainerBackend) ensureOverlay(name string, logger OperationLogger) er
 	layerInVM := b.hostPath(filepath.Join(b.layersDir(), layerHash))
 	upper := filepath.Join(vmStateDir, name, "upper")
 	work := filepath.Join(vmStateDir, name, "work")
+	// The merged view's root takes ownership from upperdir, and everything
+	// in it is written by the user `machine run` uses (the host-matching
+	// user) — so upper/work must be owned by that user, not root. Derive
+	// the uid:gid from the virtiofs workspace dir (the identity host files
+	// already present inside the VM) instead of guessing the host uid.
 	mountCmd := fmt.Sprintf(
-		"mkdir -p %s %s %s && mount -t overlay overlay -o lowerdir=%s,upperdir=%s,workdir=%s %s",
+		"mkdir -p %s %s %s && owner=$(stat -c '%%u:%%g' %s) && chown -R $owner %s %s && mount -t overlay overlay -o lowerdir=%s,upperdir=%s,workdir=%s %s",
 		quotePOSIX(upper), quotePOSIX(work), quotePOSIX(wsInVM),
+		quotePOSIX(wsInVM),
+		quotePOSIX(upper), quotePOSIX(work),
 		quotePOSIX(layerInVM), quotePOSIX(upper), quotePOSIX(work), quotePOSIX(wsInVM))
 	if err := b.runScript(mName, true, mountCmd, nil); err != nil {
 		return b.fallbackToShared(name, layerHash, err, logger)
@@ -180,10 +187,6 @@ func (b *ContainerBackend) runScriptInteractive(mName string, script string) err
 	full := append(append([]string{}, base...), args...)
 	if os.Getenv("WS_DEBUG") == "1" {
 		fmt.Fprintf(os.Stderr, "[ws debug] container %s\n", strings.Join(full, " "))
-	} else {
-		traceFirstRun.Do(func() {
-			fmt.Fprintf(os.Stderr, "[ws debug] container %s\n", strings.Join(full, " "))
-		})
 	}
 	cmd := exec.Command("container", full...)
 	cmd.Stdin = os.Stdin
