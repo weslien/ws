@@ -176,18 +176,23 @@ func (b *ContainerBackend) machineExists(mName string) bool {
 	return strings.Contains(string(out), "\""+mName+"\"")
 }
 
-// Fork creates a new workspace by instantiating a container machine and
-// staging the layer content into the workspace area inside the VM.
+// Fork creates a new workspace by instantiating a container machine.
 //
-// The workspace is a shared directory (virtiofs home mount): host-side
-// `ws run` and VM-side Commit/Diff read and write the SAME files. There is
-// deliberately NO overlayfs mount here. A VM-side overlay with lower=layer
-// would shadow host-side writes (they land on the underlying directory,
-// bypassing the overlay), causing ws keep to silently drop them. Until ws
-// supports routing execution inside the VM, overlay mode would be a data
-// loss trap — see CONTAINER-INTEGRATION.md (Model A/B/C) for the roadmap.
+// New workspaces default to OVERLAY mode (issue #1): no content staging
+// at all — the layer is mounted read-only as the overlay lowerdir lazily
+// on first use; writes go to VM-local disk; ws run executes INSIDE the
+// machine against the merged view. Fork cost = machine boot.
+//
+// If the overlay mount fails on first use, the workspace transparently
+// degrades to shared-dir mode: the layer is staged host-side (no VM) and
+// everything behaves like the old backend, with the mode recorded in
+// ~/.ws/meta/container/<name>.mode. Pre-overlay workspaces read as
+// shared and keep working unchanged.
+//
+//	Default mode: overlay. WS_CONTAINER_MODE=shared forces legacy
+//	shared-dir forks (content staged in-VM; the host can read the
+//	workspace directory directly).
 func (b *ContainerBackend) Fork(srcHash string, dstName string, logger OperationLogger) error {
-	layerDir := filepath.Join(b.layersDir(), srcHash)
 	wsDir := filepath.Join(b.workspacesDir(), dstName)
 	upperDir := filepath.Join(b.uppersDir(), dstName)
 	workDir := filepath.Join(b.workdirsDir(), dstName)
@@ -224,13 +229,30 @@ func (b *ContainerBackend) Fork(srcHash string, dstName string, logger Operation
 		}
 	}
 
-	// Paths inside the VM (home directory is auto-mounted by container).
-	layerInVM := b.hostPath(layerDir)
-	wsInVM := b.hostPath(wsDir)
+	if os.Getenv("WS_CONTAINER_MODE") == "shared" {
+		// Legacy shared-dir fork: stage the content in-VM. The host can
+		// read the workspace directory directly (compatibility mode).
+		if err := b.writeMode(dstName, "shared", ""); err != nil {
+			return err
+		}
+		return b.forkShared(mName, srcHash, dstName, logger)
+	}
 
-	// Stage 1: copy the layer into the workspace area inside the VM.
-	// The workspace directory is the substrate: plain-copy semantics,
-	// fully visible to both the host (virtiofs) and the VM.
+	// Overlay mode: record and boot; no content copied. The overlay mount
+	// happens lazily at first use (ensureOverlay) so a mount failure only
+	// costs a host-side copyDir — not a failed fork.
+	if err := b.writeMode(dstName, "overlay", srcHash); err != nil {
+		return err
+	}
+	logger.Log("workspace %s in overlay mode (layer %s mounts read-only in-VM on first use)", dstName, shortHash(srcHash))
+	return nil
+}
+
+// forkShared stages the layer content into the shared workspace directory
+// via an in-VM copy (legacy behavior).
+func (b *ContainerBackend) forkShared(mName, srcHash, dstName string, logger OperationLogger) error {
+	layerInVM := b.hostPath(filepath.Join(b.layersDir(), srcHash))
+	wsInVM := b.hostPath(filepath.Join(b.workspacesDir(), dstName))
 	logger.Log("copying layer into workspace %s...", dstName)
 	setup := fmt.Sprintf("tar -C %s -cf - . | tar -C %s -xf -",
 		quotePOSIX(layerInVM), quotePOSIX(wsInVM))
@@ -239,6 +261,13 @@ func (b *ContainerBackend) Fork(srcHash string, dstName string, logger Operation
 		return fmt.Errorf("initial copy into workspace: %w", err)
 	}
 	return nil
+}
+
+func shortHash(h string) string {
+	if len(h) > 8 {
+		return h[:8]
+	}
+	return h
 }
 
 // ForkFromWorkspace snapshots the source workspace state into a new layer,
@@ -273,22 +302,28 @@ func (b *ContainerBackend) Mount(string, string, OperationLogger) error { return
 // managed by Destroy.
 func (b *ContainerBackend) Unmount(string, OperationLogger) error { return nil }
 
-// Destroy removes the workspace's machine and its host-side directories.
+// Destroy removes the workspace's machine and its host-side directories,
+// including the mode record.
 func (b *ContainerBackend) Destroy(name string, log OperationLogger) error {
 	b.Unmount(name, log)
 	b.machineDelete(b.machineName(name))
 	for _, d := range []string{b.workspacesDir(), b.uppersDir(), b.workdirsDir()} {
 		os.RemoveAll(filepath.Join(d, name))
 	}
+	os.Remove(b.modeFile(name))
 	return nil
 }
 
 // Commit hashes the workspace content and copies it to a host layer.
-// The workspace is exported via a staging directory under ~/.ws/tmp (which
-// IS visible inside the VM via the home mount). The previous /tmp staging
-// silently produced empty layers: only the host home is mapped into the
-// machine, so hostPath() cannot map /tmp paths into the VM.
+// Overlay workspaces are mounted first (an unused overlay workspace has an
+// empty virtiofs view; the merged view only exists once mounted in-VM).
+// The export goes through a staging directory under ~/.ws/tmp, which IS
+// visible inside the VM via the home mount (the historical /tmp staging
+// silently produced empty layers — see CHANGELOG 0.9.1).
 func (b *ContainerBackend) Commit(name string, logger OperationLogger) (string, error) {
+	if err := b.ensureOverlay(name, logger); err != nil {
+		return "", err
+	}
 	mName := b.machineName(name)
 	wsInVM := b.hostPath(filepath.Join(b.workspacesDir(), name))
 
