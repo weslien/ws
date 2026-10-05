@@ -63,6 +63,44 @@ func (b *ContainerBackend) writeMode(name, mode, layerHash string) error {
 	return os.WriteFile(b.modeFile(name), []byte(mode+" "+layerHash+"\n"), 0644)
 }
 
+// vmUserIdentity reports the uid and gid that `container machine run` uses
+// for the DEFAULT user inside the machine (the identity `ws run` runs as;
+// the CLI matches the host user). Probed once per machine and cached for
+// the process lifetime. Falls back to "0:0" (root) when the probe fails,
+// which keeps the mount usable while the write test decides the real
+// verdict.
+func (b *ContainerBackend) vmUserIdentity(mName string) (string, string) {
+	b.probeMu.Lock()
+	defer b.probeMu.Unlock()
+	if b.vmUID != "" {
+		return b.vmUID, b.vmGID
+	}
+	uid, uidErr := b.machineRunOutput(mName, "id", "-u")
+	gid, gidErr := b.machineRunOutput(mName, "id", "-g")
+	if uidErr == nil && gidErr == nil {
+		u := strings.TrimSpace(uid)
+		g := strings.TrimSpace(gid)
+		if u != "" && g != "" && isNumeric(u) && isNumeric(g) {
+			b.vmUID, b.vmGID = u, g
+			return u, g
+		}
+	}
+	b.vmUID, b.vmGID = "0", "0"
+	return "0", "0"
+}
+
+func isNumeric(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // ensureMachine creates the workspace's machine if it is missing (e.g.
 // after a host reboot or a container-runtime reset).
 func (b *ContainerBackend) ensureMachine(name string, logger OperationLogger) error {
@@ -110,18 +148,34 @@ func (b *ContainerBackend) ensureOverlay(name string, logger OperationLogger) er
 	upper := filepath.Join(vmStateDir, name, "upper")
 	work := filepath.Join(vmStateDir, name, "work")
 	// The merged view's root takes ownership from upperdir, and everything
-	// in it is written by the user `machine run` uses (the host-matching
-	// user) — so upper/work must be owned by that user, not root. Derive
-	// the uid:gid from the virtiofs workspace dir (the identity host files
-	// already present inside the VM) instead of guessing the host uid.
+	// written lands via the user `machine run` uses — the host-matching
+	// user by default. Ask the machine for that identity instead of
+	// guessing a uid: `id -u` / `id -g` inside the machine, run WITHOUT
+	// --root so it reports the default user `ws run` will actually run as.
+	uid, gid := b.vmUserIdentity(mName)
+	// chown upper/work to the run-user BEFORE mounting; then prove the
+	// default user can actually write the merged view — an id-mapped
+	// virtiofs (files presented as 0:0) makes chown useless, and a
+	// root-owned view silently breaks ws run. A failed write test falls
+	// back to shared-dir mode rather than producing a workspace `ws run`
+	// cannot write to.
 	mountCmd := fmt.Sprintf(
-		"mkdir -p %s %s %s && owner=$(stat -c '%%u:%%g' %s) && chown -R $owner %s %s && mount -t overlay overlay -o lowerdir=%s,upperdir=%s,workdir=%s %s",
+		"mkdir -p %s %s %s && chown %s:%s %s %s && mount -t overlay overlay -o lowerdir=%s,upperdir=%s,workdir=%s %s",
 		quotePOSIX(upper), quotePOSIX(work), quotePOSIX(wsInVM),
-		quotePOSIX(wsInVM),
+		uid, gid,
 		quotePOSIX(upper), quotePOSIX(work),
 		quotePOSIX(layerInVM), quotePOSIX(upper), quotePOSIX(work), quotePOSIX(wsInVM))
 	if err := b.runScript(mName, true, mountCmd, nil); err != nil {
 		return b.fallbackToShared(name, layerHash, err, logger)
+	}
+	// Write test as the DEFAULT user: overlayfs takes the merged view's
+	// ownership from upperdir; an id-mapped virtiofs or a chown-rejecting
+	// upperdir leaves it unwritable. Fall back rather than keep a broken
+	// overlay the user cannot write to.
+	probe := fmt.Sprintf("cd %s && touch .ws-write-test && rm .ws-write-test", quotePOSIX(wsInVM))
+	if err := b.runScript(mName, false, probe, nil); err != nil {
+		return b.fallbackToShared(name, layerHash,
+			fmt.Errorf("default VM user cannot write the merged view (overlay ownership): %v", err), logger)
 	}
 	if logger != nil {
 		logger.Log("overlayfs active in machine %s", mName)
@@ -134,6 +188,17 @@ func (b *ContainerBackend) ensureOverlay(name string, logger OperationLogger) er
 func (b *ContainerBackend) fallbackToShared(name, layerHash string, cause error, logger OperationLogger) error {
 	if logger != nil {
 		logger.Log("overlay unavailable for %s (%v) — falling back to shared-dir mode", name, cause)
+	}
+	// If an overlay was mounted at the workspace path before the failure,
+	// it shadows the virtiofs share — remove it so host-side staging is
+	// visible in the VM again.
+	mName := b.machineName(name)
+	wsInVM := b.hostPath(filepath.Join(b.workspacesDir(), name))
+	if b.mountedInVM(mName, wsInVM) {
+		umount := fmt.Sprintf("umount %s", quotePOSIX(wsInVM))
+		if err := b.runScript(mName, true, umount, nil); err != nil {
+			return fmt.Errorf("fallback umount for %s: %w", name, err)
+		}
 	}
 	layerDir := filepath.Join(b.layersDir(), layerHash)
 	wsDir := filepath.Join(b.workspacesDir(), name)

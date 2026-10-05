@@ -43,6 +43,9 @@ type ContainerBackend struct {
 	probeMu    sync.Mutex
 	probeDone  bool
 	argvJoined bool // true = machine run joins positionals into one shell line
+
+	vmUID string // default `machine run` user uid in-VM (probed once)
+	vmGID string
 }
 
 func NewContainerBackend() *ContainerBackend {
