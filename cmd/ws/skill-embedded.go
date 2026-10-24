@@ -18,6 +18,10 @@ description: Use ws (workspace graph CLI) for managing mutable workspaces on imm
 
 You have been asked to work on a codebase, and you need a workspace. The codebase is managed by ` + "`" + `ws` + "`" + `. Follow the patterns below to create, modify, share, and clean up your work safely.
 
+**evroc rule (operator, 2026-10-19):** any kanban card that will edit a shared repo checkout under ` + "`" + `~/src/*` + "`" + ` must fork a ws workspace FIRST (` + "`" + `ws get dir:<checkout> --name=<card-id>` + "`" + `) and work there — never edit the shared checkout directly. Two card workers once edited ` + "`" + `~/src/think` + "`" + ` concurrently on one filesystem; the operator called it out: "you should have used ws here to avoid clomping in the same file system."
+
+**When NOT to ws: git-native surgery.** The rule binds cards editing shared checkouts — not a dedicated ` + "`" + `git worktree` + "`" + ` used by a single task. For merges, rebases, and conflict resolution prefer a worktree: it shares the object store on a native filesystem, while overlayfs makes index and commit operations crawl (see the git-in-` + "`" + `ws:` + "`" + `-forks pitfalls). Commits and tags are already content-addressed checkpoints; ws layers add nothing for pure branch work.
+
 ## What ws is
 
 ` + "`" + `ws` + "`" + ` creates **mutable workspaces** from **immutable layers**. Think Git worktrees, but:
@@ -32,9 +36,22 @@ You have been asked to work on a codebase, and you need a workspace. The codebas
 |---------|----------------|-----------|------------|
 | Linux   | overlayfs       | O(1)      | Yes (fuse) |
 | macOS   | copy            | O(n)      | No         |
-| macOS+* | container VM    | ~VM boot  | Yes        |
+| macOS+* | container VM    | ~VM boot  | Yes (in-VM, exec routes inside the VM) |
 
-*macOS Apple Silicon with ` + "`" + `container` + "`" + ` (github.com/apple/container) installed
+*macOS Apple Silicon with ` + "`" + `container` + "`" + ` (github.com/apple/container) installed. Since v0.9.2 the
+container backend defaults to OVERLAY mode: layer mounted read-only inside the workspace's VM,
+writes to VM-local disk, ` + "`" + `ws run` + "`" + ` executes inside the VM (binaries must exist there — alpine
+busybox). Mount failure degrades silently to shared-dir mode. Prefer hyphens in workspace names
+on macOS — ` + "`" + `container machine` + "`" + ` names don't allow underscores and ws's sanitization can collide
+(` + "`" + `bug_1` + "`" + ` and ` + "`" + `bug-1` + "`" + ` both map to machine ` + "`" + `ws-bug-1` + "`" + `).
+
+### Apple ` + "`" + `container` + "`" + ` exec quirk (critical if extending the backend)
+
+` + "`" + `container machine run` + "`" + ` does NOT preserve argv — it joins positional arguments into one
+command line re-parsed by the machine's shell. Always pass in-VM scripts as
+` + "`" + `["sh","-c", quotePOSIX(script)]` + "`" + ` with a ` + "`" + `--` + "`" + ` separator before the command (ws's
+` + "`" + `argvJoinProbe` + "`" + ` detects the semantics at runtime). Failure signature if you forget: a
+BusyBox usage dump + "tar: short read". ` + "`" + `WS_DEBUG=1` + "`" + ` traces every machine-run invocation.
 
 ## The 10 Scenarios (use these)
 
@@ -615,6 +632,60 @@ done
 ws get layer:$WINNING_HASH --name=fix --force
 ws keep fix --message="bug fix: hypothesis $WINNER was correct"
 ` + "`" + `` + "`" + `` + "`" + `
+
+### git in ` + "`" + `ws:` + "`" + ` forks (evroc monorepo cards)
+
+Use when a fork made by ` + "`" + `ws get ws:<source> --name=<card>` + "`" + ` needs git operations.
+
+- Fork the source workspace ONLY after it stabilizes. ` + "`" + `ws get ws:` + "`" + ` snapshots mid-flight state: if the source worker commits later, the fork ` + "`" + `git diff` + "`" + ` vs the new HEAD shows phantom differences or none. Verify the fork tree against the expected commit before building on it.
+- ` + "`" + `ws get ws:` + "`" + ` can time out outright on multi-GB parents under disk pressure (8.6 G source, 94% full disk → exit 124 twice at 180 s, 2026-10-23). Fallback: ` + "`" + `git clone --shared --no-checkout` + "`" + ` from a checkout that holds the wanted ref (a live sibling checkout or any repo with the remote wired), then ` + "`" + `git checkout <branch>` + "`" + ` and ` + "`" + `git config core.hooksPath ~/.git-hooks` + "`" + ` — the clone skips FUSE entirely.
+- Prefer the pushed REMOTE branch as the source of truth when the parent card is COMPLETE. A completed parent's durable copy is its pushed branch on the fork remote, not its ws ` + "`" + `.git` + "`" + `: shared-clone alternates borrow objects from a ` + "`" + `.git` + "`" + ` that dies (or gets pruned/GC'd) with the parent workspace, so clone from the remote, or ` + "`" + `git fetch <remote> <parent-branch>` + "`" + ` into a fresh clone. Symptom of late discovery: ` + "`" + `git push` + "`" + ` or ` + "`" + `rev-list` + "`" + ` fails with ` + "`" + `fatal: missing blob object <sha>` + "`" + ` hours after the clone worked.
+- Repair a missing-blob push/fetch from an alternates clone with ` + "`" + `git fetch --refetch <remote> <branch>` + "`" + `. A plain fetch negotiates "haves" and ships a thin pack that assumes the (now-dead) alternate serves the rest — only ` + "`" + `--refetch` + "`" + ` re-downloads everything. Expect sibling failures on unrelated refs (stale canary tags point at objects nobody has); the branch pack lands anyway — verify with ` + "`" + `git cat-file -e <sha>` + "`" + ` and push.
+- Wire ` + "`" + `.git` + "`" + ` via alternates; never copy the object store. A ` + "`" + `ws:` + "`" + ` fork keeps worktree files but loses ` + "`" + `.git` + "`" + ` entirely (the snapshot layer excludes it).
+
+` + "`" + `` + "`" + `` + "`" + `bash
+W=$(ws path <card>); S=$(ws path <source>)
+mkdir -p $W/.git/objects/info $W/.git/refs/heads $W/.git/refs/tags
+echo "$S/.git/objects" > $W/.git/objects/info/alternates
+cp $S/.git/config $W/.git/config
+cp -a $S/.git/refs/heads $S/.git/refs/tags $W/.git/refs/ 2>/dev/null
+# refs/remotes are usually packed-refs; leave them out — push negotiates from the server advertisement.
+echo "ref: refs/heads/<source-branch>" > $W/.git/HEAD
+cp $S/.git/index $W/.git/index          # reuse the ready-made index
+git -C $W update-ref refs/heads/<new-branch> <base-sha>  # plumbing only
+echo "ref: refs/heads/<new-branch>" > $W/.git/HEAD
+` + "`" + `` + "`" + `` + "`" + `
+
+- COPY the source's ` + "`" + `.git/index` + "`" + `. Never run ` + "`" + `git reset` + "`" + ` to rebuild it and never run ` + "`" + `git status` + "`" + ` in a fresh fork: both stat the whole tree through FUSE and time out (a ` + "`" + `git reset` + "`" + ` in the evroc monorepo exceeded 120 s and produced nothing).
+- Create branches with plumbing (` + "`" + `update-ref` + "`" + ` + rewrite ` + "`" + `.git/HEAD` + "`" + `), never ` + "`" + `git checkout -b` + "`" + `: checkout rescans the tree.
+- Stage with exact paths (` + "`" + `git add <files>` + "`" + `), then run ` + "`" + `git commit` + "`" + ` from a logged background script. The commit triggers a full-index stat refresh through FUSE: ~3-5 minutes under load. A foreground timeout kills it before objects are written; recover by clearing ` + "`" + `.git/index.lock` + "`" + ` if left, then retry.
+- Push with ` + "`" + `git push --no-verify` + "`" + ` from alternates forks. The global pre-push hook runs ` + "`" + `git lfs pre-push` + "`" + `, whose ref-walk reads objects that live only in the main checkout's packs and fails with ` + "`" + `missing object <sha>` + "`" + `. This is an infra artifact, not a secrets finding: gitleaks runs as pre-commit and already scanned the staged content at commit time. Never use ` + "`" + `--no-verify` + "`" + ` to bypass gitleaks pre-commit itself.
+- Scope ` + "`" + `git status` + "`" + ` before acting on it. An overlayfs fork whose git index sits on a feature branch can show thousands of phantom modified/deleted files (bazel/, docs/, src/private/...) — the frozen base layer holds the source checkout's worktree state, which differs from the fork's branch. Confirm with ` + "`" + `git status --porcelain -- <your subtree>` + "`" + ` and the vendor dir: if only the card's own files show, the phantom diffs are inert and gate runs on the clean subtree stay valid. Never run blanket ` + "`" + `git add -A` + "`" + `, ` + "`" + `git checkout -- .` + "`" + `, or ` + "`" + `git restore .` + "`" + ` on such a fork — stage exact paths only, so unrelated base-layer drift never lands in a commit.
+- A fork can carry no git remotes at all (` + "`" + `git remote -v` + "`" + ` prints nothing, push then fails with "'origin' does not appear to be a git repository"). Push by explicit URL instead: ` + "`" + `git push git@<internal-git-host>:<group>/<repo>.git <branch>` + "`" + `, and verify with ` + "`" + `git ls-remote <same-url> <branch>` + "`" + `. Take the URL from the source checkout (` + "`" + `git -C ~/src/<repo> remote -v` + "`" + `).
+- After a commit fails or a fresh object read fails, wait ~30 s and retry before deep diagnosis: FUSE flushes new loose objects with visible lag, and directory listings right after ` + "`" + `ws get` + "`" + ` can show entries that vanish moments later (` + "`" + `.git` + "`" + ` included).
+- Run gate batteries (vet/build/test/lint) as a background script that appends ` + "`" + `GATE <name>: OK|FAIL` + "`" + ` lines to a log file, and poll the log in ~60 s intervals. One foreground call per battery hits the tool timeout and returns nothing; per-gate ` + "`" + `tail -8` + "`" + ` of the log keeps every result.
+
+### Disk economy: overlays, not full copies (operator, 2026-10-23)
+
+Stray full clones of large repos are a disk hazard: four evroc monorepo copies under ` + "`" + `~/src` + "`" + ` (~35G) pushed the workstation root FS to 100% mid-task; only regenerable caches could be freed safely. The operator built ws for exactly this — cheap overlays instead of copies.
+
+- The same rule binds kanban card workspaces, for every repo with a multi-hundred-MB object store — ` + "`" + `hermes-agent` + "`" + ` included. A card that runs ` + "`" + `git clone` + "`" + ` inside its scratch dir duplicates a ~1.2 GiB pack per card; seven such clones put 12 GiB back on a freshly cleaned disk within one hour (2026-10-24). Inside a card workspace, wire ` + "`" + `.git` + "`" + ` with the alternates recipe above, or fork with ` + "`" + `ws get dir:<checkout> --name=<card>` + "`" + `. When the card completes, reclaim under the kanban fleet reclaim loop below.
+- Never make a fresh full clone of a repo that already exists under ` + "`" + `~/src` + "`" + ` just to get a per-task sandbox. Fork with ` + "`" + `ws get dir:<checkout> --name=<card>` + "`" + ` (O(1) on Linux overlayfs), or seed once with ` + "`" + `ws get base:<repo>#<ref>` + "`" + ` and fork layers per agent.
+- After a multi-agent consolidation ships, drop agent workspaces and run ` + "`" + `ws layer gc` + "`" + ` (Scenario 6). A task's full checkout should not outlive the task.
+- On a full disk: suspect stray per-task copies first. Free regenerable caches (go-build, docker builder cache) immediately, then replace stale task copies with overlays — with the operator's confirmation, since copies may hold unshipped work.
+- Note the boundary: overlays are for task sandboxes. A single dedicated ` + "`" + `git worktree` + "`" + ` for heavy merge surgery is still correct per 'When NOT to ws'.
+- Maintenance: ` + "`" + `ws skill` + "`" + ` with no arguments reinstalls the binary's embedded skill over this file and discards curated lessons (verified 2026-10-24: embedded 651 lines vs 727 curated). Never run bare ` + "`" + `ws skill` + "`" + `. After a ` + "`" + `ws update` + "`" + `, check this file still contains the git-in-forks pitfalls and the kanban fleet reclaim loop; when lost, restore from the newest copy under ` + "`" + `~/.hermes/profiles/*/skills/ws-workspace-graph/` + "`" + `. The ws embed must be refreshed from this master at the next binary rebuild.
+
+
+### Kanban fleet reclaim loop (2026-10-24 workstation pass)
+
+Kanban cards that fork ` + "`" + `hermes-agent` + "`" + ` duplicate ~1.1-1.3 GiB ` + "`" + `.git` + "`" + ` packs per card clone, and each ` + "`" + `ws get dir:.hermes/hermes-agent` + "`" + ` snapshots the ~9 GiB venv into a layer. Done cards accumulate tens of GiB within hours while the fleet runs. Reclaim loop:
+
+1. Read board evidence read-only: ` + "`" + `sqlite3 'file:~/.hermes/kanban/boards/<board>/kanban.db?mode=ro&immutable=1'` + "`" + ` — task ` + "`" + `status` + "`" + `, ` + "`" + `worker_pid` + "`" + `, ` + "`" + `current_run_id` + "`" + `.
+2. ` + "`" + `ws drop` + "`" + ` only workspaces whose card is ` + "`" + `done` + "`" + ` with ` + "`" + `worker_pid` + "`" + ` and ` + "`" + `current_run_id` + "`" + ` empty. Never touch ` + "`" + `running` + "`" + `, ` + "`" + `blocked` + "`" + `, ` + "`" + `todo` + "`" + `, ` + "`" + `triage` + "`" + ` cards, or another agent's in-flight workspace. A ` + "`" + `blocked` + "`" + ` card's workspace may hold unshipped work.
+3. ` + "`" + `ws layer gc` + "`" + ` — frees every layer the drops unreferenced; verified safe with live ` + "`" + `running` + "`" + ` cards active.
+4. Remove the done card's directory under ` + "`" + `~/.hermes/kanban/boards/<board>/workspaces/` + "`" + ` (result text lives in the DB, not the scratch dir).
+5. Verify once: ` + "`" + `ws status` + "`" + ` shows only in-flight workspaces, then ` + "`" + `df` + "`" + `. An orphaned ` + "`" + `~/.ws/uppers/t_<id>/` + "`" + ` left by a dropped workspace belongs to a card that may be open — list its contents and flag it, do not delete silently.
 
 ## Command Reference
 
