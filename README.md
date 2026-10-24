@@ -120,7 +120,7 @@ ws graph
 
 ### macOS: Linux VM workspaces via Apple Container
 
-On macOS, `ws` uses efficient directory copies by default. For per-workspace Linux VMs (real Linux kernel; execution and file operations happen inside the VM while the workspace stays visible on your Mac), install [Apple Container](https://github.com/apple/container):
+On macOS, `ws` uses efficient directory copies by default. For per-workspace Linux VMs with in-VM overlayfs, install [Apple Container](https://github.com/apple/container):
 
 ```bash
 brew install container
@@ -129,17 +129,24 @@ container system start   # first run prompts to install a Linux kernel
 
 Requirements: macOS 26 (Tahoe) or later, Apple Silicon (M1+).
 
-With the CLI installed, `ws` auto-detects it and routes each new workspace through a `container machine` — same graph model, same commands. No configuration needed.
+With the CLI installed, `ws` auto-detects it. Each workspace becomes a `container machine` (Linux VM) in **overlay mode** — the same graph model, near-Linux fork cost:
+
+- Fork = machine boot only: the layer is mounted **read-only inside the VM** as the overlayfs lowerdir. No content is copied — identical to how Linux forks work.
+- `ws run` **executes inside the VM** against the merged view (writes land on VM-local disk; the layer is never modified). TTY/stdin/stdout are forwarded; `WS_VM_ROOT=1` runs as root in the VM.
+- `ws keep` exports the merged view to a new layer; `ws diff`, `ws export`, and `ws status` all know how to read VM-side content.
+- If the in-VM mount can't be established (or the VM's kernel lacks overlayfs), the workspace transparently falls back to shared-dir mode: the layer is staged to the workspace directory (visible on the Mac) and everything still works — slower forks, no data loss.
 
 ```bash
-WS_BACKEND=copy ws ...        # force directory copies (e.g. inside VMs-in-VMs)
-WS_BACKEND=container ws ...   # require the container backend (errors if not installed)
+WS_BACKEND=copy ws ...              # force directory copies (e.g. inside VMs-in-VMs)
+WS_BACKEND=container ws ...         # require the container backend (errors if not installed)
+WS_CONTAINER_MODE=shared ws get ... # fork in shared-dir mode (host reads work)
+WS_VM_ROOT=1 ws run <ws> -- ...    # run as root inside the VM
 ```
 
 Notes:
 - Prefer hyphens in workspace names — `container machine` identifiers do not allow underscores (`ws` sanitizes them, but distinct names can collide: `bug_1` and `bug-1` both map to machine `ws-bug-1`).
-- First fork per machine boots a VM and stages the layer content into it; subsequent `ws keep`/`ws diff` run inside the VM while the workspace directory stays visible (and directly usable) on your Mac.
-- In-VM overlayfs is planned but deliberately not enabled yet: `ws run` executes on the Mac, and a VM-side overlay would hide host writes from `ws keep`. See [issue #1](https://github.com/weslien/ws/issues/1).
+- Binaries you execute via `ws run` must exist inside the VM (alpine provides the busybox utilities; anything else needs installing in-VM, e.g. via a post-fork `ws run -- apk add ...`).
+- `WS_DEBUG=1` traces every `container machine run` invocation.
 
 ---
 
@@ -346,7 +353,7 @@ Layers are content-addressed by a SHA-256 truncated to 16 hex characters.
 ### macOS
 
 - By default, uses directory copies for all fork/branch operations (no kernel overlayfs available).
-- If Apple's [`container`](https://github.com/apple/container) is installed (macOS 26+, Apple Silicon), ws auto-detects it and runs each workspace in a lightweight Linux VM (`container machine`) — execution and file operations happen inside the VM, the workspace directory stays visible on the Mac (see "macOS: Linux VM workspaces via Apple Container" above).
+- If Apple's [`container`](https://github.com/apple/container) is installed (macOS 26+, Apple Silicon), ws auto-detects it and runs each workspace in a lightweight Linux VM (`container machine`) with real in-VM overlayfs — fork = VM boot + read-only layer mount (no copy); `ws run` executes inside the VM (see "macOS: Linux VM workspaces via Apple Container" above).
 - No additional dependencies beyond Go (copy backend).
 
 ### Windows

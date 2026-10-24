@@ -71,6 +71,9 @@ NOTES
   - Stdin, stdout, and stderr are forwarded directly.
   - On Linux, writes go to the overlayfs upper directory — the lower layer is
     never modified, so isolation from the base is guaranteed.
+  - On macOS with the container backend, the command executes INSIDE the
+    workspace's Linux VM (the binary must exist in the VM; alpine provides
+    busybox utilities). WS_VM_ROOT=1 runs as root in the VM.
   - Running two commands simultaneously in the same workspace may cause file
     races. For concurrent agents, use separate workspaces.`,
 
@@ -417,10 +420,15 @@ MACOS (default)
 
 MACOS (with Apple Container)
   Backend: container — each workspace is a lightweight Linux VM, via Apple
-           'container' (github.com/apple/container). File operations
-           (keep/diff/export) run inside the VM; the workspace directory
-           stays visible on the Mac via the shared home mount.
-  Fork cost: one VM boot plus an in-VM copy of the layer content.
+           'container' (github.com/apple/container).
+  Mode overlay (default): the layer is mounted read-only INSIDE the VM
+           (overlayfs lowerdir); writes go to VM-local disk; ws run
+           executes inside the VM against the merged view. Fork cost =
+           machine boot (no content copy). If the in-VM mount fails the
+           workspace silently degrades to shared mode.
+  Mode shared (WS_CONTAINER_MODE=shared): the workspace directory is the
+           content itself, shared between Mac and VM (host-side reads
+           work; ws run still executes in the VM).
   Requirements: macOS 26 (Tahoe) or later, Apple Silicon (M1+)
   Install:
     brew install container
@@ -428,14 +436,16 @@ MACOS (with Apple Container)
   Once installed, ws auto-detects the container CLI and uses it automatically.
   Prefer hyphens in workspace names — 'container machine' identifiers do not
   allow underscores.
-  Note: in-VM overlayfs is planned but not enabled yet (ws run executes on
-  the Mac; a VM-side overlay would hide host writes from keep). See
-  https://github.com/weslien/ws/issues/1
   Source: https://github.com/apple/container
 
 ENVIRONMENT VARIABLES
   WS_BACKEND=copy       Force copy backend on any platform
   WS_BACKEND=container  Force container backend (macOS only)
+  WS_CONTAINER_MODE=shared  Container backend: fork in shared-dir mode (host
+                        can read the workspace directory directly) instead
+                        of the default in-VM overlay mode
+  WS_VM_ROOT=1          ws run executes as root inside the container VM
+  WS_DEBUG=1            Trace every machine-run invocation
 
 BACKEND SELECTION
   Linux:  always overlayfs

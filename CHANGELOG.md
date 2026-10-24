@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Embedded `ws-workspace-graph` skill re-synced with the fleet-curated master (651 → 723 lines): a kanban fleet reclaim loop (done-card workspace drops + `ws layer gc` + scratch-dir cleanup, gated on read-only DB evidence), a no-full-clone rule for card workspaces over multi-hundred-MB repos (use `ws get dir:` or git alternates — seven in-card clones put 12 GiB back on a freshly cleaned disk in one hour), git-in-`ws:`-forks pitfalls (`ws get ws:` timeout fallback to `git clone --shared`, remote-branch-as-source-of-truth for COMPLETE parents, `git fetch --refetch` repair for missing-blob pushes), and a warning that bare `ws skill` reinstalls the embedded copy over a curated SKILL.md.
+- macOS container backend (Apple `container`): **in-VM execution and overlayfs** (issue #1). New workspaces default to overlay mode — the layer is mounted read-only inside the workspace's Linux VM (fork = machine boot, no content copy); `ws run` executes inside the VM against the merged view with TTY forwarding and exit-code propagation (`WS_VM_ROOT=1` for root). `ws status` and `ws export` read VM-side content via new optional backend capabilities (`WorkspaceHasher`, `Exporter`, `Execer`). On mount failure workspaces transparently degrade to shared-dir mode (layer staged host-side, no data loss). `WS_CONTAINER_MODE=shared` forces shared-dir forks for host-side readability. Overlay upper/work dirs are chowned to the probed default in-VM user (`id -u`/`id -g` via `machine run`, no `--root`), and a write test after mounting falls back to shared-dir mode when the merged view is not writable (e.g. id-mapped virtiofs) instead of keeping a broken overlay.
+
 ### Fixed
+- Progress logs now write to stderr; `--json` output on stdout is pure JSON (previously lines like `overlayfs active in machine …` broke `ws keep --json | jq`).
 - Installer: resolve "latest" from releases (the tags API is not semver-ordered, and tags exist for releases whose pipeline failed — v0.7.0–v0.9.0); verify prebuilt tarballs against the published `.sha256` asset; build from source at the release tag (never stamp `main` with a release version); report the installed binary's version by path, not PATH-resolved `ws`. wget fallback; README install section matches behavior.
 
 ## [0.9.1] — 2026-10-01
